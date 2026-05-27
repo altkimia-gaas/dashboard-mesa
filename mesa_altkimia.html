@@ -1,0 +1,1134 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ALTKimia — Plataforma MESA GaaS</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;}
+:root{
+  --blue:#2196F3;--blue-dark:#1565C0;--blue-light:#42A5F5;
+  --bg1:#080B12;--bg2:#0D1117;--bg3:#111827;--bg4:#161d2b;
+  --text:#F0F4FF;--muted:#8B9DC3;--border:#1E2D4A;
+  --green:#4CAF50;--amber:#FF9800;--red:#EF5350;
+}
+html,body{background:var(--bg1);color:var(--text);font-family:'Inter',system-ui,sans-serif;height:100%;line-height:1.6;}
+::-webkit-scrollbar{width:5px;height:5px;}
+::-webkit-scrollbar-track{background:var(--bg2);}
+::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px;}
+::-webkit-scrollbar-thumb:hover{background:#2a3f5f;}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+@keyframes bounce{0%,80%,100%{transform:translateY(0)}40%{transform:translateY(-5px)}}
+@keyframes fadeIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
+@keyframes slideIn{from{opacity:0;transform:translateX(-8px)}to{opacity:1;transform:translateX(0)}}
+@keyframes toastIn{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:translateY(0)}}
+textarea,input[type=text],input[type=password]{
+  background:var(--bg3);border:0.5px solid var(--border);border-radius:6px;
+  color:var(--text);font-family:'Inter',sans-serif;font-size:13px;
+  padding:9px 12px;outline:none;width:100%;transition:border-color .15s;
+}
+textarea{resize:vertical;min-height:80px;}
+textarea:focus,input:focus{border-color:rgba(33,150,243,.5);}
+input::placeholder,textarea::placeholder{color:var(--border);}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const {useState,useEffect,useRef,useCallback,useMemo} = React;
+
+/* ══════════════════════════════════════════
+   BRAND TOKENS
+══════════════════════════════════════════ */
+const B={blue:"#2196F3",blueDark:"#1565C0",blueLight:"#42A5F5",
+  bg1:"#080B12",bg2:"#0D1117",bg3:"#111827",bg4:"#161d2b",
+  text:"#F0F4FF",muted:"#8B9DC3",border:"#1E2D4A",
+  green:"#4CAF50",amber:"#FF9800",red:"#EF5350"};
+
+/* ══════════════════════════════════════════
+   PERSISTENCIA — localStorage helpers
+══════════════════════════════════════════ */
+const STORE_KEY = "altkimia_mesa_v2";
+function loadStore(){
+  try{ const r=localStorage.getItem(STORE_KEY); return r?JSON.parse(r):null; }
+  catch{ return null; }
+}
+function saveStore(data){
+  try{ localStorage.setItem(STORE_KEY,JSON.stringify({...data,_saved:new Date().toISOString()})); return true; }
+  catch{ return false; }
+}
+function clearStore(){ try{ localStorage.removeItem(STORE_KEY); }catch{} }
+
+/* ══════════════════════════════════════════
+   DATA DEFAULTS
+══════════════════════════════════════════ */
+const MODULES_DEF = [
+  { id:"m1",letter:"M",phase:"Mapear",name:"Identidad Estratégica",foco:"Propósito, misión, visión y modelo de negocio",
+    unlocked:true,
+    steps:[
+      {id:"s1",title:"Diagnóstico de propósito",desc:"Exploración del por qué y para qué existe la empresa",state:"done"},
+      {id:"s2",title:"Mapa de modelo de negocio",desc:"Canvas completo con hipótesis validadas",state:"done"},
+      {id:"s3",title:"Análisis de diferenciadores",desc:"Identificación de ventajas competitivas reales",state:"active"},
+      {id:"s4",title:"Declaración estratégica",desc:"Síntesis ejecutiva del posicionamiento",state:"pending"},
+      {id:"s5",title:"Evaluación de cierre M1",desc:"Assessment final y feedback IA",state:"pending"}
+    ],
+    nota:"El propósito no es un slogan. Es el contrato invisible entre la empresa y sus stakeholders. Un propósito débil se traduce en decisiones inconsistentes bajo presión.",
+    quiz:{q:"¿Qué tan clara es tu propuesta de valor diferenciada?",opts:["No la hemos definido formalmente","Existe pero no es comunicada consistentemente","Está documentada y el equipo la conoce","Es nuestra ventaja competitiva principal"],scores:[1,2,3,4]},
+    kpis:[{label:"NPS interno",val:72},{label:"Claridad estratégica",val:85},{label:"Alineación equipo",val:68}],
+    resources:[
+      {type:"doc",name:"Canvas Modelo de Negocio",url:"#"},
+      {type:"doc",name:"Plantilla declaración estratégica",url:"#"},
+      {type:"video",name:"Intro: Propósito estratégico",url:"#",dur:"12 min"},
+      {type:"video",name:"Cómo definir tu misión",url:"#",dur:"9 min"},
+      {type:"quiz",name:"Diagnóstico inicial M1",url:"#"},
+      {type:"quiz",name:"Evaluación de cierre M1",url:"#"}
+    ]
+  },
+  { id:"m2",letter:"E",phase:"Estructurar",name:"Mercado y Cliente",foco:"Segmentación, buyer persona y propuesta de valor",
+    unlocked:false,
+    steps:[
+      {id:"s1",title:"Mapa de actores del mercado",desc:"Identificación de segmentos y ecosistema competitivo",state:"done"},
+      {id:"s2",title:"Construcción de buyer persona",desc:"Perfiles detallados con trabajos, dolores y ganancias",state:"done"},
+      {id:"s3",title:"Mapa de empatía",desc:"Comprensión profunda del cliente objetivo",state:"active"},
+      {id:"s4",title:"Propuesta de valor ajustada",desc:"Alineación entre oferta y necesidades reales",state:"pending"},
+      {id:"s5",title:"Evaluación de cierre M2",desc:"Validación con datos y feedback IA",state:"pending"}
+    ],
+    nota:"El error más común: confundir el cliente que queremos con el cliente que efectivamente nos compra. Los datos del comportamiento real pesan más que las intenciones declaradas.",
+    quiz:{q:"¿Cuántos buyer personas activos tienes definidos y validados?",opts:["Ninguno, operamos por intuición","1-2 sin validación real","2-3 validados con entrevistas","Más de 3, actualizados trimestralmente"],scores:[1,2,3,4]},
+    kpis:[{label:"Tamaño SAM",val:58},{label:"NPS clientes",val:74},{label:"% fit propuesta",val:62}],
+    resources:[
+      {type:"doc",name:"Plantilla Buyer Persona",url:"#"},
+      {type:"doc",name:"Mapa de empatía editable",url:"#"},
+      {type:"video",name:"Jobs to Be Done framework",url:"#",dur:"14 min"},
+      {type:"video",name:"Value Proposition Canvas",url:"#",dur:"11 min"},
+      {type:"quiz",name:"Diagnóstico inicial M2",url:"#"},
+      {type:"quiz",name:"Evaluación de cierre M2",url:"#"}
+    ]
+  },
+  { id:"m3",letter:"S",phase:"Sistematizar",name:"Operaciones y Procesos",foco:"Flujos operativos, eficiencia y cuellos de botella",
+    unlocked:false,
+    steps:[
+      {id:"s1",title:"Mapeo de procesos core",desc:"Documentación de flujos críticos As-Is",state:"done"},
+      {id:"s2",title:"Análisis de eficiencia",desc:"Identificación de desperdicios y cuellos de botella",state:"active"},
+      {id:"s3",title:"Diseño To-Be",desc:"Procesos optimizados con tecnología habilitante",state:"pending"},
+      {id:"s4",title:"KPIs operacionales",desc:"Métricas de seguimiento de eficiencia",state:"pending"},
+      {id:"s5",title:"Evaluación de cierre M3",desc:"Revisión de mejoras y plan de acción",state:"pending"}
+    ],
+    nota:"La eficiencia operacional no es cortar costos. Es eliminar fricción que el cliente nunca pagará y reinvertir ese margen en lo que sí valoriza.",
+    quiz:{q:"¿Tus procesos críticos están documentados y son reproducibles sin personas clave?",opts:["No están documentados","Parcialmente documentados","Documentados pero no sistematizados","Sistematizados y con mejora continua"],scores:[1,2,3,4]},
+    kpis:[{label:"Eficiencia proceso",val:40},{label:"Tiempo ciclo",val:55},{label:"% automatización",val:28}],
+    resources:[
+      {type:"doc",name:"Plantilla mapa de procesos",url:"#"},
+      {type:"doc",name:"Tablero KPIs operacionales",url:"#"},
+      {type:"video",name:"Lean thinking aplicado",url:"#",dur:"16 min"},
+      {type:"video",name:"Automatización con IA",url:"#",dur:"13 min"},
+      {type:"quiz",name:"Diagnóstico inicial M3",url:"#"},
+      {type:"quiz",name:"Evaluación de cierre M3",url:"#"}
+    ]
+  },
+  { id:"m4",letter:"A",phase:"Escalar",name:"Gestión Financiera",foco:"Flujo de caja, costos, rentabilidad y proyecciones",
+    unlocked:false,
+    steps:[
+      {id:"s1",title:"Diagnóstico financiero base",desc:"Análisis de estado actual: P&L, balance y caja",state:"done"},
+      {id:"s2",title:"Estructura de costos",desc:"Clasificación y análisis de costo variable/fijo",state:"pending"},
+      {id:"s3",title:"Proyección de flujo de caja",desc:"Escenarios a 12 meses con supuestos explícitos",state:"pending"},
+      {id:"s4",title:"Unit economics y márgenes",desc:"LTV, CAC, payback y punto de equilibrio",state:"pending"},
+      {id:"s5",title:"Evaluación de cierre M4",desc:"Plan financiero integrado y feedback IA",state:"pending"}
+    ],
+    nota:"ALERTA: análisis preliminar sugiere ventana de caja crítica en mes 4-5. Revisar supuestos de cobranza y negociar condiciones con proveedores antes de escalar.",
+    quiz:{q:"¿Conoces tu runway actual y en qué mes proyectas llegar a breakeven?",opts:["No tenemos claridad financiera","Datos sin proyección","Proyección a 6 meses con incertidumbre","Modelo financiero robusto a 18+ meses"],scores:[1,2,3,4]},
+    kpis:[{label:"Margen bruto",val:38},{label:"Runway meses",val:55},{label:"LTV/CAC ratio",val:22}],
+    resources:[
+      {type:"doc",name:"Plantilla P&L simplificado",url:"#"},
+      {type:"doc",name:"Modelo flujo de caja 12M",url:"#"},
+      {type:"video",name:"Unit economics para startups",url:"#",dur:"18 min"},
+      {type:"video",name:"Punto de equilibrio y CAC",url:"#",dur:"12 min"},
+      {type:"quiz",name:"Diagnóstico inicial M4",url:"#"},
+      {type:"quiz",name:"Evaluación de cierre M4",url:"#"}
+    ]
+  },
+  { id:"m5",letter:"+",phase:"Autonomizar",name:"Personas y Cultura",foco:"Equipo, liderazgo, roles y cultura organizacional",
+    unlocked:false,
+    steps:[
+      {id:"s1",title:"Diagnóstico de equipo",desc:"Evaluación de capacidades, gaps y motivación",state:"pending"},
+      {id:"s2",title:"Diseño organizacional",desc:"Estructura, roles, responsabilidades y flujos",state:"pending"},
+      {id:"s3",title:"Cultura y valores en acción",desc:"Brecha entre cultura declarada y real",state:"pending"},
+      {id:"s4",title:"Plan de desarrollo",desc:"Capacitación, contratación y retención",state:"pending"},
+      {id:"s5",title:"Evaluación de cierre M5",desc:"Índice de salud del equipo y plan de acción",state:"pending"}
+    ],
+    nota:"El factor humano es el multiplicador de todo lo demás. Un equipo alineado con cultura fuerte ejecuta una estrategia mediocre mejor que un equipo disfuncional con una estrategia brillante.",
+    quiz:{q:"¿Tu equipo tiene claridad sobre sus roles y cómo contribuyen al propósito?",opts:["Hay confusión frecuente","Claridad informal, sin documentación","Roles definidos, comunicación regular","Alta claridad, OKRs alineados"],scores:[1,2,3,4]},
+    kpis:[{label:"Engagement",val:0},{label:"Claridad de roles",val:0},{label:"Retención 12M",val:0}],
+    resources:[
+      {type:"doc",name:"Mapa de roles y competencias",url:"#"},
+      {type:"doc",name:"Encuesta clima organizacional",url:"#"},
+      {type:"video",name:"Liderazgo en startups",url:"#",dur:"15 min"},
+      {type:"video",name:"Cultura como ventaja competitiva",url:"#",dur:"11 min"},
+      {type:"quiz",name:"Diagnóstico inicial M5",url:"#"},
+      {type:"quiz",name:"Evaluación de cierre M5",url:"#"}
+    ]
+  },
+  { id:"m6",letter:"+",phase:"Autonomizar",name:"Escalamiento",foco:"Crecimiento, digitalización y expansión de mercado",
+    unlocked:false,
+    steps:[
+      {id:"s1",title:"Assessment de escalabilidad",desc:"Evaluación de readiness para crecer",state:"pending"},
+      {id:"s2",title:"Estrategia de crecimiento",desc:"Canales, mercados y palancas de escala",state:"pending"},
+      {id:"s3",title:"Habilitadores tecnológicos",desc:"Stack digital, automatización y data",state:"pending"},
+      {id:"s4",title:"Roadmap de expansión",desc:"Plan de 18 meses con hitos y métricas",state:"pending"},
+      {id:"s5",title:"Evaluación de cierre M6",desc:"Score de escalabilidad y plan de inversión",state:"pending"}
+    ],
+    nota:"Escalar prematuramente es la segunda causa de muerte de empresas. Antes de acelerar, asegúrate de que el motor funciona: producto validado, margen positivo, equipo sólido.",
+    quiz:{q:"¿Tu modelo puede crecer 10x sin que los costos crezcan proporcionalmente?",opts:["No hemos analizado la escalabilidad","Crecería con costos proporcionales","Hay economías de escala identificadas","Modelo probadamente escalable"],scores:[1,2,3,4]},
+    kpis:[{label:"Readiness score",val:0},{label:"Growth rate",val:0},{label:"Tech enablement",val:0}],
+    resources:[
+      {type:"doc",name:"Framework de escalabilidad",url:"#"},
+      {type:"doc",name:"Roadmap tecnológico",url:"#"},
+      {type:"video",name:"Growth hacking B2B",url:"#",dur:"20 min"},
+      {type:"video",name:"Venture building LATAM",url:"#",dur:"17 min"},
+      {type:"quiz",name:"Diagnóstico inicial M6",url:"#"},
+      {type:"quiz",name:"Evaluación de cierre M6",url:"#"}
+    ]
+  }
+];
+
+const GAAS_DEF=[
+  {id:"mentoria",name:"Mentoría",active:true,indicators:[
+    {name:"Sesiones realizadas vs plan",val:"4/8",pct:50,sel:true,desc:"Ratio de cumplimiento del plan de mentoría"},
+    {name:"NPS del mentoreado",val:"72",pct:72,sel:true,desc:"Satisfacción y percepción de valor"},
+    {name:"Compromisos cumplidos",val:"68%",pct:68,sel:false,desc:"% acciones comprometidas ejecutadas"}
+  ]},
+  {id:"capacitacion",name:"Capacitación",active:true,indicators:[
+    {name:"% completitud módulos",val:"58%",pct:58,sel:true,desc:"Avance en módulos de capacitación"},
+    {name:"Variación de conocimiento",val:"+34%",pct:34,sel:true,desc:"Delta pre/post capacitación"},
+    {name:"Aplicación práctica",val:"72%",pct:72,sel:false,desc:"% que aplica lo aprendido"}
+  ]},
+  {id:"consultoria",name:"Consultoría",active:true,indicators:[
+    {name:"Entregables completados",val:"3/5",pct:60,sel:true,desc:"Avance en entregables acordados"},
+    {name:"Impacto sobre KPI objetivo",val:"+18%",pct:18,sel:false,desc:"Variación del KPI mejorado"},
+    {name:"Satisfacción cliente",val:"8.4",pct:84,sel:true,desc:"Nota escala 1-10"}
+  ]},
+  {id:"networking",name:"Networking",active:false,indicators:[
+    {name:"Conexiones activadas",val:"12",pct:60,sel:false,desc:"Nuevos contactos estratégicos"},
+    {name:"Reuniones concretadas",val:"5",pct:50,sel:false,desc:"Reuniones de negocios realizadas"},
+    {name:"Alianzas iniciadas",val:"1",pct:33,sel:false,desc:"Alianzas en proceso o cerradas"}
+  ]},
+  {id:"financiamiento",name:"Financiamiento",active:false,indicators:[
+    {name:"Postulaciones enviadas",val:"2",pct:40,sel:false,desc:"Fondos o instrumentos postulados"},
+    {name:"Tasa de aprobación",val:"50%",pct:50,sel:false,desc:"% postulaciones aprobadas"},
+    {name:"Montos adjudicados",val:"$0",pct:0,sel:false,desc:"Financiamiento externo obtenido"}
+  ]},
+  {id:"tecnologia",name:"Tecnología / IA",active:true,indicators:[
+    {name:"Herramientas adoptadas",val:"3",pct:60,sel:true,desc:"Herramientas digitales implementadas"},
+    {name:"Tiempo de implementación",val:"6 sem",pct:70,sel:false,desc:"Semanas desde decisión hasta adopción"},
+    {name:"ROI estimado",val:"2.4x",pct:80,sel:true,desc:"Retorno estimado sobre inversión"}
+  ]}
+];
+
+const HEALTH_HISTORY_DEF=[
+  {label:"Inicio",val:5.2,date:"2025-03-01"},
+  {label:"Mes 1",val:5.8,date:"2025-04-01"},
+  {label:"Mes 2",val:6.1,date:"2025-05-01"},
+  {label:"Mes 3",val:6.4,date:"2025-06-01"},
+  {label:"Mes 4",val:6.6,date:"2025-07-01"},
+  {label:"Actual",val:6.8,date:"2025-08-01"}
+];
+
+/* ══════════════════════════════════════════
+   AI CALL
+══════════════════════════════════════════ */
+async function callAI(prompt, apiKey) {
+  const key = apiKey || "AIzaSyDqrvBEvPr2cVOe4_J-6EE7VOLwlV44i1U";
+  const TARGET = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${key}`;
+  const BODY = JSON.stringify({
+    contents: [{ parts: [{ text: prompt }] }],
+    generationConfig: { maxOutputTokens: 1000 }
+  });
+
+  // Intento 1: llamada directa
+  try {
+    const res = await fetch(TARGET, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: BODY
+    });
+    const d = await res.json();
+    if (d.error) throw new Error(d.error.message);
+    const txt = d.candidates?.[0]?.content?.parts?.[0]?.text;
+    if (txt) return txt;
+    throw new Error("Respuesta vacía");
+  } catch(e1) {
+    // Intento 2: proxy CORS (allorigins)
+    try {
+      const encoded = encodeURIComponent(TARGET);
+      const proxyUrl = `https://api.allorigins.win/raw?url=${encoded}`;
+      const res2 = await fetch(proxyUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: BODY
+      });
+      const d2 = await res2.json();
+      if (d2.error) throw new Error(d2.error.message);
+      const txt2 = d2.candidates?.[0]?.content?.parts?.[0]?.text;
+      if (txt2) return txt2;
+      throw new Error("Sin respuesta del proxy");
+    } catch(e2) {
+      // Intento 3: proxy alternativo (corsproxy.io)
+      const res3 = await fetch("https://corsproxy.io/?" + encodeURIComponent(TARGET), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: BODY
+      });
+      const d3 = await res3.json();
+      if (d3.error) throw new Error(d3.error.message);
+      const txt3 = d3.candidates?.[0]?.content?.parts?.[0]?.text;
+      if (txt3) return txt3;
+      throw new Error("Todos los proxies fallaron. Verifica tu conexión a internet.");
+    }
+  }
+}
+
+/* ══════════════════════════════════════════
+   UI PRIMITIVES
+══════════════════════════════════════════ */
+const LogoMark=({size=30})=>(
+  <svg width={size} height={size} viewBox="0 0 100 100">
+    <rect width="100" height="100" rx="22" fill={B.blue}/>
+    <circle cx="46" cy="56" r="24" fill="none" stroke="#fff" strokeWidth="10"/>
+    <line x1="70" y1="32" x2="70" y2="80" stroke="#fff" strokeWidth="10" strokeLinecap="round"/>
+    <circle cx="46" cy="56" r="6" fill="rgba(255,255,255,.85)"/>
+    <circle cx="70" cy="32" r="6" fill="rgba(255,255,255,.6)"/>
+  </svg>
+);
+
+const Eyebrow=({children,style={}})=>(
+  <div style={{fontSize:10,letterSpacing:"2.5px",color:B.blue,textTransform:"uppercase",fontWeight:400,marginBottom:6,...style}}>{children}</div>
+);
+
+const Badge=({children,style={}})=>(
+  <span style={{display:"inline-flex",alignItems:"center",gap:5,background:"rgba(33,150,243,.1)",color:B.blueLight,border:"0.5px solid rgba(33,150,243,.3)",borderRadius:20,padding:"3px 12px",fontSize:10,letterSpacing:"1.5px",textTransform:"uppercase",...style}}>{children}</span>
+);
+
+function Toast({msg,type="success",onClose}){
+  useEffect(()=>{const t=setTimeout(onClose,3000);return()=>clearTimeout(t);},[]);
+  const col=type==="success"?B.green:type==="error"?B.red:B.blue;
+  return(
+    <div style={{position:"fixed",bottom:24,right:24,zIndex:9999,background:B.bg3,border:`0.5px solid ${col}`,borderLeft:`3px solid ${col}`,borderRadius:8,padding:"12px 16px",fontSize:13,color:B.text,display:"flex",alignItems:"center",gap:10,animation:"toastIn .3s ease",boxShadow:"0 8px 32px rgba(0,0,0,.4)",minWidth:260}}>
+      <div style={{width:8,height:8,borderRadius:"50%",background:col,flexShrink:0}}/>
+      {msg}
+      <div onClick={onClose} style={{marginLeft:"auto",cursor:"pointer",color:B.muted,fontSize:16,lineHeight:1}}>×</div>
+    </div>
+  );
+}
+
+function AIPanel({loading,text,history=[]}){
+  return(
+    <div style={{background:"rgba(33,150,243,.05)",border:"0.5px solid rgba(33,150,243,.2)",borderLeft:`3px solid ${B.blue}`,borderRadius:"0 8px 8px 0",padding:"14px 16px",marginTop:12,animation:"fadeIn .3s ease"}}>
+      <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}>
+        <div style={{width:7,height:7,borderRadius:"50%",background:B.blue,animation:"pulse 2s infinite",flexShrink:0}}/>
+        <span style={{fontSize:10,fontFamily:"'DM Mono',monospace",color:B.blueLight,textTransform:"uppercase",letterSpacing:"1.5px"}}>Motor IA · ALTKimia</span>
+        {history.length>0&&<span style={{marginLeft:"auto",fontSize:10,color:B.border,fontFamily:"DM Mono"}}>{history.length} análisis prev.</span>}
+      </div>
+      {loading
+        ?<div style={{display:"flex",gap:5,padding:"4px 0"}}>{[0,1,2].map(i=><span key={i} style={{width:6,height:6,borderRadius:"50%",background:B.blueLight,display:"inline-block",animation:`bounce 1.2s ${i*.2}s infinite`}}/>)}</div>
+        :<p style={{fontSize:13,color:B.muted,lineHeight:1.7,margin:0,whiteSpace:"pre-wrap"}}>{text}</p>
+      }
+    </div>
+  );
+}
+
+/* ══════════════════════════════════════════
+   CHARTS
+══════════════════════════════════════════ */
+function HealthChart({history}){
+  const ref=useRef(null);const chart=useRef(null);
+  useEffect(()=>{
+    if(!ref.current)return;
+    if(chart.current)chart.current.destroy();
+    chart.current=new Chart(ref.current,{
+      type:"line",
+      data:{
+        labels:history.map(h=>h.label),
+        datasets:[
+          {label:"Salud empresa",data:history.map(h=>h.val),borderColor:B.blue,backgroundColor:"rgba(33,150,243,.08)",fill:true,tension:.4,pointRadius:4,pointBackgroundColor:B.blue,pointBorderColor:B.bg1,pointBorderWidth:2},
+          {label:"Benchmark",data:history.map(()=>6.2),borderColor:B.border,borderDash:[4,4],fill:false,tension:0,pointRadius:0}
+        ]
+      },
+      options:{responsive:true,maintainAspectRatio:false,
+        plugins:{legend:{display:false},tooltip:{backgroundColor:B.bg3,borderColor:B.border,borderWidth:1,titleColor:B.text,bodyColor:B.muted}},
+        scales:{
+          x:{grid:{color:"rgba(30,45,74,.5)"},ticks:{color:B.muted,font:{size:10,family:"DM Mono"}}},
+          y:{grid:{color:"rgba(30,45,74,.5)"},ticks:{color:B.muted,font:{size:10,family:"DM Mono"}},min:4,max:10,stepSize:1}
+        }
+      }
+    });
+    return()=>{if(chart.current)chart.current.destroy();};
+  },[JSON.stringify(history)]);
+  return <canvas ref={ref}/>;
+}
+
+function MiniChart({mod}){
+  const ref=useRef(null);const chart=useRef(null);
+  useEffect(()=>{
+    if(!ref.current)return;
+    if(chart.current)chart.current.destroy();
+    const data=[20,35,50,mod.progress,mod.progress>0?Math.min(100,mod.progress+5):null,null];
+    chart.current=new Chart(ref.current,{
+      type:"line",
+      data:{labels:["M1","M2","M3","M4","M5","M6"],datasets:[{data,borderColor:B.blue,backgroundColor:"rgba(33,150,243,.06)",fill:true,tension:.4,pointRadius:3,pointBackgroundColor:B.blue}]},
+      options:{responsive:true,maintainAspectRatio:false,
+        plugins:{legend:{display:false}},
+        scales:{x:{grid:{color:"rgba(30,45,74,.4)"},ticks:{color:B.muted,font:{size:10,family:"DM Mono"}}},y:{grid:{color:"rgba(30,45,74,.4)"},ticks:{color:B.muted,font:{size:10,family:"DM Mono"}},min:0,max:100}}
+      }
+    });
+    return()=>{if(chart.current)chart.current.destroy();};
+  },[mod.id,mod.progress]);
+  return <canvas ref={ref}/>;
+}
+
+function RadarSVG({modules}){
+  const cx=100,cy=100,r=68,n=6;
+  const pts=modules.map((m,i)=>{const v=m.progress/100,a=(Math.PI*2*i/n)-Math.PI/2;return[cx+Math.cos(a)*r*v,cy+Math.sin(a)*r*v];});
+  return(
+    <svg viewBox="0 0 200 200" style={{width:"100%",height:"100%"}}>
+      {[1,2,3,4].map(ring=>{const p=Array.from({length:n},(_,i)=>{const a=(Math.PI*2*i/n)-Math.PI/2;return`${cx+Math.cos(a)*r*ring/4},${cy+Math.sin(a)*r*ring/4}`;}).join(" ");return<polygon key={ring} points={p} fill="none" stroke={B.border} strokeWidth="1"/>;
+      })}
+      {Array.from({length:n},(_,i)=>{const a=(Math.PI*2*i/n)-Math.PI/2;return<line key={i} x1={cx} y1={cy} x2={cx+Math.cos(a)*r} y2={cy+Math.sin(a)*r} stroke={B.border} strokeWidth="1"/>;
+      })}
+      <polygon points={pts.map(p=>p.join(",")).join(" ")} fill="rgba(33,150,243,.14)" stroke={B.blue} strokeWidth="1.5"/>
+      {pts.map((p,i)=><circle key={i} cx={p[0]} cy={p[1]} r="3" fill={B.blue}/>)}
+      {modules.map((m,i)=>{const a=(Math.PI*2*i/n)-Math.PI/2;return<text key={i} x={cx+Math.cos(a)*(r+16)} y={cy+Math.sin(a)*(r+16)} textAnchor="middle" dominantBaseline="middle" fontSize="8" fill={B.muted} fontFamily="DM Mono">{m.id.toUpperCase()}</text>;})}
+    </svg>
+  );
+}
+
+/* ══════════════════════════════════════════
+   MADUREZ SCORE
+══════════════════════════════════════════ */
+function MaturityBadge({score}){
+  const lvl=score<=1?"Inicial":score<=2?"En desarrollo":score<=3?"Sistematizado":"Escalable";
+  const col=score<=1?B.red:score<=2?B.amber:score<=3?B.blue:B.green;
+  return(
+    <span style={{display:"inline-flex",alignItems:"center",gap:6,background:`${col}18`,border:`0.5px solid ${col}`,borderRadius:20,padding:"3px 10px",fontSize:10,color:col,fontFamily:"DM Mono",letterSpacing:"1px"}}>
+      {lvl} · {score.toFixed(1)}
+    </span>
+  );
+}
+
+/* ══════════════════════════════════════════
+   SETTINGS MODAL
+══════════════════════════════════════════ */
+function SettingsModal({settings,onSave,onClose}){
+  const [form,setForm]=useState({...settings});
+  const f=(k,v)=>setForm(p=>({...p,[k]:v}));
+  return(
+    <div style={{position:"fixed",inset:0,background:"rgba(8,11,18,.85)",zIndex:1000,display:"flex",alignItems:"center",justifyContent:"center"}} onClick={e=>{if(e.target===e.currentTarget)onClose();}}>
+      <div style={{background:B.bg2,border:`0.5px solid ${B.border}`,borderRadius:12,padding:"2rem",width:440,maxWidth:"92vw",animation:"fadeIn .2s ease"}}>
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:20}}>
+          <div>
+            <Eyebrow>Configuración</Eyebrow>
+            <h2 style={{fontSize:18,fontWeight:600,color:B.text}}>Empresa y plataforma</h2>
+          </div>
+          <button onClick={onClose} style={{background:"none",border:"none",color:B.muted,cursor:"pointer",fontSize:20,lineHeight:1}}>×</button>
+        </div>
+        {[
+          {key:"empresa",label:"Nombre de empresa",placeholder:"Empresa Demo S.A."},
+          {key:"sector",label:"Sector / industria",placeholder:"SaaS · GovTech · EdTech..."},
+          {key:"etapa",label:"Etapa actual",placeholder:"Startup · PyME · ScaleUp"},
+          {key:"responsable",label:"Responsable del proceso",placeholder:"Nombre del gerente MESA"},
+          {key:"apiKey",label:"API Key Gemini (motor IA activo)",placeholder:"AIzaSy...",type:"password"}
+        ].map(f2=>(
+          <div key={f2.key} style={{marginBottom:12}}>
+            <div style={{fontSize:11,color:B.muted,marginBottom:5,textTransform:"uppercase",letterSpacing:"1px"}}>{f2.label}</div>
+            <input type={f2.type||"text"} value={form[f2.key]||""} onChange={e=>f(f2.key,e.target.value)} placeholder={f2.placeholder}/>
+          </div>
+        ))}
+        <div style={{display:"flex",gap:8,marginTop:20}}>
+          <button onClick={()=>{onSave(form);onClose();}} style={{flex:1,padding:"9px 0",background:B.blue,border:"none",borderRadius:6,color:"#fff",fontSize:13,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>Guardar cambios</button>
+          <button onClick={onClose} style={{padding:"9px 18px",background:"transparent",border:`0.5px solid ${B.border}`,borderRadius:6,color:B.muted,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>Cancelar</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ══════════════════════════════════════════
+   PLAN DE ACCIÓN EXPORT
+══════════════════════════════════════════ */
+function exportPlan(modules,settings,gaas){
+  const lines=[];
+  lines.push(`PLAN DE ACCIÓN MESA — ${settings.empresa||"Empresa"}`);
+  lines.push(`Generado: ${new Date().toLocaleDateString("es-CL")} · Responsable: ${settings.responsable||"—"}`);
+  lines.push("══════════════════════════════════════════");
+  lines.push("");
+  modules.forEach(m=>{
+    lines.push(`[${m.id.toUpperCase()}] ${m.phase} — ${m.name} (${m.progress||0}%)`);
+    const pendientes=m.steps.filter(s=>s.state!=="done");
+    if(pendientes.length){
+      pendientes.forEach(s=>lines.push(`  · ${s.title}: ${s.desc}`));
+    } else {
+      lines.push("  ✓ Módulo completado");
+    }
+    lines.push("");
+  });
+  lines.push("SERVICIOS GaaS ACTIVOS:");
+  gaas.filter(g=>g.active).forEach(g=>{
+    lines.push(`  · ${g.name}`);
+    g.indicators.filter(i=>i.sel).forEach(i=>lines.push(`    — ${i.name}: ${i.val}`));
+  });
+  const blob=new Blob([lines.join("\n")],{type:"text/plain;charset=utf-8"});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement("a");
+  a.href=url;a.download=`MESA_PlanAccion_${Date.now()}.txt`;a.click();
+  URL.revokeObjectURL(url);
+}
+
+/* ══════════════════════════════════════════
+   MODULE VIEW
+══════════════════════════════════════════ */
+function ModuleView({mod,modules,setModules,apiKey,addToast,addEvent}){
+  const [tab,setTab]=useState("pasos");
+  const [quizSel,setQuizSel]=useState(mod.diagQuizSel!=null?mod.diagQuizSel:null);
+  const [scale,setScale]=useState(mod.diagScale||{});
+  const [comment,setComment]=useState(mod.diagComment||"");
+  const [ai,setAi]=useState(mod.lastAI?{show:true,loading:false,text:mod.lastAI}:{show:false,loading:false,text:""});
+  const [diag,setDiag]=useState(mod.lastDiag?{show:true,loading:false,text:mod.lastDiag}:{show:false,loading:false,text:""});
+
+  // Persistir cambios de diagnóstico en módulo
+  const persistDiag=useCallback((updates)=>{
+    setModules(prev=>prev.map(m=>m.id!==mod.id?m:{...m,...updates}));
+  },[mod.id,setModules]);
+
+  const markDone=(idx)=>{
+    setModules(prev=>prev.map(m=>{
+      if(m.id!==mod.id)return m;
+      const steps=m.steps.map(s=>({...s}));
+      steps[idx]={...steps[idx],state:"done",completedAt:new Date().toISOString()};
+      if(steps[idx+1]&&steps[idx+1].state==="pending") steps[idx+1]={...steps[idx+1],state:"active"};
+      const done=steps.filter(s=>s.state==="done").length;
+      const progress=Math.round(done/steps.length*100);
+      // Desbloquear siguiente módulo si completado al 100%
+      const updatedMods=[...prev];
+      const mIdx=updatedMods.findIndex(x=>x.id===m.id);
+      if(progress===100&&mIdx+1<updatedMods.length){
+        updatedMods[mIdx+1]={...updatedMods[mIdx+1],unlocked:true};
+      }
+      updatedMods[mIdx]={...updatedMods[mIdx],steps,progress};
+      addEvent(`${m.id.toUpperCase()} — Paso completado: ${steps[idx].title}`);
+      return updatedMods[mIdx];
+    }));
+    addToast("Paso completado y guardado","success");
+  };
+
+  const handleAI=async()=>{
+    
+    setAi({show:true,loading:true,text:""});
+    const done=mod.steps.filter(s=>s.state==="done").map(s=>s.title).join(", ");
+    const matScore=mod.diagQuizSel!=null?(mod.diagQuizSel+1):null;
+    const p=`Eres consultor senior de ALTKimia, especializado en metodología MESA (Mapear, Estructurar, Sistematizar, Escalar, Autonomizar). Empresa: "${mod.settings?.empresa||"cliente"}". Módulo: "${mod.name}" — Fase ${mod.phase} — Avance: ${mod.progress||0}%. Pasos completados: ${done||"ninguno"}. Score de madurez auto-declarado: ${matScore||"sin datos"}. Entrega: 1) Diagnóstico ejecutivo en 2 líneas. 2) Recomendación más crítica. 3) Riesgo si no se actúa. Directo, sin bullet points, tono ALTKimia: ejecutivo y sin humo. Máximo 120 palabras.`;
+    try{
+      const t=await callAI(p,apiKey);
+      setAi({show:true,loading:false,text:t});
+      persistDiag({lastAI:t,lastAIDate:new Date().toISOString()});
+      addToast("Análisis IA guardado","success");
+    }catch(e){
+      setAi({show:true,loading:false,text:`Error: ${e.message}`});
+      addToast("Error al conectar con IA","error");
+    }
+  };
+
+  const handleDiag=async()=>{
+    
+    const matScore=quizSel!=null?quizSel+1:null;
+    const scaleVals=Object.entries(scale).map(([k,v])=>`dim${parseInt(k)+1}:${v}`).join(", ");
+    setDiag({show:true,loading:true,text:""});
+    const p=`Eres experto en metodología MESA de ALTKimia. Módulo: "${mod.name}" (${mod.foco}), fase ${mod.phase}. Nivel declarado en diagnóstico: opción ${matScore||"no respondida"} de 4. Auto-evaluaciones (escala 1-5): ${scaleVals||"no completadas"}. Contexto adicional: "${comment||"ninguno"}". Entrega: 1) Nivel de madurez actual (1 párrafo). 2) Las 2 brechas más críticas. 3) Los 3 primeros pasos concretos esta semana. Máximo 150 palabras. Segunda persona, directo, sin jerga.`;
+    try{
+      const t=await callAI(p,apiKey);
+      setDiag({show:true,loading:false,text:t});
+      persistDiag({lastDiag:t,lastDiagDate:new Date().toISOString(),diagQuizSel:quizSel,diagScale:scale,diagComment:comment});
+      addToast("Diagnóstico procesado y guardado","success");
+    }catch(e){
+      setDiag({show:true,loading:false,text:`Error: ${e.message}`});
+      addToast("Error al procesar diagnóstico","error");
+    }
+  };
+
+  const saveComment=()=>{persistDiag({diagComment:comment,diagQuizSel:quizSel,diagScale:scale});addToast("Diagnóstico guardado","success");};
+
+  const card={background:B.bg2,border:`0.5px solid ${B.border}`,borderRadius:8,padding:"14px 16px"};
+  const btn=(primary)=>({padding:"8px 18px",borderRadius:6,fontSize:12,fontFamily:"inherit",fontWeight:600,cursor:"pointer",letterSpacing:".3px",border:`0.5px solid ${primary?B.blue:B.border}`,background:primary?B.blue:"transparent",color:primary?"#fff":B.muted,transition:"all .15s"});
+  const maturity=mod.diagQuizSel!=null?mod.diagQuizSel+1:null;
+
+  return(
+    <div style={{animation:"fadeIn .25s ease"}}>
+      {/* Header */}
+      <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",marginBottom:20}}>
+        <div>
+          <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:6,flexWrap:"wrap"}}>
+            <Badge>{mod.phase}</Badge>
+            <span style={{fontSize:10,fontFamily:"DM Mono",color:B.muted}}>{mod.id.toUpperCase()}</span>
+            {mod.status==="active"||mod.progress>0
+              ?<span style={{fontSize:10,padding:"2px 10px",borderRadius:10,background:"rgba(33,150,243,.1)",color:B.blueLight,border:"0.5px solid rgba(33,150,243,.25)",fontFamily:"DM Mono"}}>En progreso</span>
+              :mod.unlocked
+                ?<span style={{fontSize:10,padding:"2px 10px",borderRadius:10,background:"rgba(30,45,74,.3)",color:B.muted,fontFamily:"DM Mono"}}>Sin iniciar</span>
+                :<span style={{fontSize:10,padding:"2px 10px",borderRadius:10,background:"rgba(239,83,80,.1)",color:B.red,fontFamily:"DM Mono"}}>🔒 Bloqueado</span>
+            }
+            {maturity&&<MaturityBadge score={maturity}/>}
+            {mod.lastAIDate&&<span style={{fontSize:10,color:B.border,fontFamily:"DM Mono"}}>IA: {new Date(mod.lastAIDate).toLocaleDateString("es-CL")}</span>}
+          </div>
+          <h1 style={{fontSize:22,fontWeight:600,letterSpacing:"-0.5px",color:B.text,marginBottom:4}}>{mod.name}</h1>
+          <p style={{fontSize:13,color:B.muted}}>{mod.foco}</p>
+        </div>
+        <div style={{textAlign:"right",flexShrink:0}}>
+          <div style={{fontSize:28,fontWeight:700,color:B.blue,fontFamily:"DM Mono",letterSpacing:"-1px"}}>{mod.progress||0}%</div>
+          <div style={{fontSize:10,color:B.muted,textTransform:"uppercase",letterSpacing:"1px",fontFamily:"DM Mono"}}>avance</div>
+          <div style={{height:3,background:B.border,borderRadius:2,marginTop:6,width:80,overflow:"hidden"}}>
+            <div style={{height:"100%",width:`${mod.progress||0}%`,background:B.blue,borderRadius:2,transition:"width .5s ease"}}/>
+          </div>
+        </div>
+      </div>
+
+      {/* Módulo bloqueado */}
+      {!mod.unlocked&&(
+        <div style={{...card,textAlign:"center",padding:"2.5rem",border:`0.5px solid rgba(239,83,80,.2)`}}>
+          <div style={{fontSize:32,marginBottom:12}}>🔒</div>
+          <div style={{fontSize:15,fontWeight:500,color:B.text,marginBottom:8}}>Módulo bloqueado</div>
+          <div style={{fontSize:13,color:B.muted,lineHeight:1.6}}>Completa el módulo anterior al 100% para desbloquear este paso del Método MESA.<br/>El avance secuencial garantiza la solidez de la implementación.</div>
+        </div>
+      )}
+
+      {mod.unlocked&&(<>
+      {/* Tabs */}
+      <div style={{display:"flex",gap:0,background:B.bg3,padding:3,borderRadius:8,marginBottom:20,width:"fit-content",border:`0.5px solid ${B.border}`}}>
+        {[["pasos","Pasos"],["recursos","Recursos"],["diagnostico","Diagnóstico"],["dashboard","Dashboard"]].map(([t,lbl])=>(
+          <button key={t} onClick={()=>setTab(t)} style={{padding:"6px 16px",borderRadius:5,fontSize:12,cursor:"pointer",fontWeight:tab===t?500:400,color:tab===t?B.text:B.muted,background:tab===t?B.bg4:"transparent",border:"none",fontFamily:"inherit",letterSpacing:".2px",transition:"all .15s"}}>{lbl}</button>
+        ))}
+      </div>
+
+      {/* ── PASOS ── */}
+      {tab==="pasos"&&(
+        <div>
+          <div style={{background:"rgba(33,150,243,.04)",border:`0.5px solid ${B.border}`,borderLeft:`2px solid ${B.blue}`,borderRadius:"0 8px 8px 0",padding:"12px 16px",fontSize:13,color:B.muted,lineHeight:1.7,marginBottom:20}}>{mod.nota}</div>
+          {mod.steps.map((s,i)=>(
+            <div key={s.id} style={{display:"flex",alignItems:"flex-start",gap:12,padding:"12px 14px",background:B.bg2,border:`0.5px solid ${s.state==="done"?"rgba(33,150,243,.3)":s.state==="active"?"rgba(33,150,243,.15)":B.border}`,borderRadius:8,marginBottom:8,transition:"all .15s",opacity:s.state==="pending"&&i>0&&mod.steps[i-1].state!=="done"?.5:1}}>
+              <div style={{width:26,height:26,borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,fontWeight:600,flexShrink:0,fontFamily:"DM Mono",background:s.state==="done"?"rgba(33,150,243,.2)":s.state==="active"?"rgba(33,150,243,.1)":B.bg3,color:s.state==="done"?B.blue:s.state==="active"?B.blueLight:B.muted,border:`0.5px solid ${s.state==="done"?B.blue:s.state==="active"?"rgba(33,150,243,.3)":B.border}`}}>
+                {s.state==="done"?<svg viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" style={{width:10,height:10}}><polyline points="1,7 5,10 11,2"/></svg>:`0${i+1}`}
+              </div>
+              <div style={{flex:1}}>
+                <div style={{fontSize:13,fontWeight:500,color:s.state==="pending"?B.muted:B.text,marginBottom:2}}>{s.title}</div>
+                <div style={{fontSize:11,color:B.border}}>{s.desc}</div>
+                {s.completedAt&&<div style={{fontSize:10,color:B.border,fontFamily:"DM Mono",marginTop:3}}>Completado {new Date(s.completedAt).toLocaleDateString("es-CL")}</div>}
+              </div>
+              <div style={{display:"flex",gap:6,alignItems:"center",flexShrink:0}}>
+                {s.state==="active"&&<button style={btn(true)} onClick={()=>markDone(i)}>Completar ✓</button>}
+              </div>
+            </div>
+          ))}
+          <div style={{display:"flex",gap:8,marginTop:20,flexWrap:"wrap"}}>
+            <button style={btn(true)} onClick={handleAI}>Analizar con IA ↗</button>
+            <button style={btn(false)} onClick={()=>addToast("Exportando avance...","info")}>Exportar avance</button>
+          </div>
+          {ai.show&&<AIPanel loading={ai.loading} text={ai.text}/>}
+        </div>
+      )}
+
+      {/* ── RECURSOS ── */}
+      {tab==="recursos"&&(
+        <div>
+          {[["doc","Documentos"],["video","Videos"],["quiz","Cuestionarios"]].map(([type,lbl])=>(
+            <div key={type} style={{marginBottom:20}}>
+              <Eyebrow style={{marginBottom:10}}>{lbl}</Eyebrow>
+              <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:8}}>
+                {mod.resources.filter(r=>r.type===type).map((r,i)=>(
+                  <div key={i} style={{...card,cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",textAlign:"center",gap:10,padding:"16px 12px"}}>
+                    <div style={{width:36,height:36,background:"rgba(33,150,243,.1)",borderRadius:8,display:"flex",alignItems:"center",justifyContent:"center",color:B.blue}}>
+                      <svg viewBox="0 0 32 32" style={{width:18,height:18}} fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+                        {type==="doc"&&<><rect x="5" y="3" width="22" height="26" rx="3"/><line x1="10" y1="10" x2="22" y2="10"/><line x1="10" y1="15" x2="19" y2="15"/><line x1="10" y1="20" x2="21" y2="20"/></>}
+                        {type==="video"&&<><circle cx="16" cy="16" r="13"/><polygon points="13,11 13,21 23,16" fill="currentColor" stroke="none" opacity=".8"/></>}
+                        {type==="quiz"&&<><rect x="4" y="4" width="24" height="24" rx="3"/><line x1="10" y1="11" x2="22" y2="11"/><line x1="10" y1="16" x2="22" y2="16"/><line x1="10" y1="21" x2="16" y2="21"/></>}
+                      </svg>
+                    </div>
+                    <div style={{fontSize:11,color:B.muted,lineHeight:1.4}}>{r.name}</div>
+                    {r.dur&&<span style={{fontSize:10,fontFamily:"DM Mono",color:B.border}}>{r.dur}</span>}
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* ── DIAGNÓSTICO ── */}
+      {tab==="diagnostico"&&(
+        <div>
+          {/* Indicador de diagnóstico previo */}
+          {mod.lastDiagDate&&(
+            <div style={{display:"flex",alignItems:"center",gap:8,padding:"8px 12px",background:"rgba(33,150,243,.06)",border:`0.5px solid rgba(33,150,243,.2)`,borderRadius:6,marginBottom:16,fontSize:12,color:B.muted}}>
+              <div style={{width:6,height:6,borderRadius:"50%",background:B.green,flexShrink:0}}/>
+              Diagnóstico guardado · {new Date(mod.lastDiagDate).toLocaleDateString("es-CL")}
+              {maturity&&<MaturityBadge score={maturity}/>}
+            </div>
+          )}
+
+          <Eyebrow style={{marginBottom:10}}>Cuestionario de diagnóstico</Eyebrow>
+          <div style={{...card,marginBottom:16}}>
+            <div style={{fontSize:14,fontWeight:500,lineHeight:1.6,color:B.text,marginBottom:14}}>{mod.quiz.q}</div>
+            {mod.quiz.opts.map((o,i)=>(
+              <div key={i} onClick={()=>{setQuizSel(i);persistDiag({diagQuizSel:i});}} style={{padding:"10px 14px",border:`0.5px solid ${quizSel===i?B.blue:B.border}`,borderRadius:6,cursor:"pointer",fontSize:13,color:quizSel===i?B.blueLight:B.muted,background:quizSel===i?"rgba(33,150,243,.08)":B.bg3,marginBottom:6,transition:"all .15s",display:"flex",alignItems:"center",gap:10}}>
+                <div style={{width:16,height:16,borderRadius:"50%",border:`1px solid ${quizSel===i?B.blue:B.muted}`,background:quizSel===i?B.blue:"transparent",flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center"}}>
+                  {quizSel===i&&<div style={{width:6,height:6,borderRadius:"50%",background:"#fff"}}/>}
+                </div>
+                <span style={{flex:1}}>{o}</span>
+                <span style={{fontSize:10,fontFamily:"DM Mono",color:B.border}}>{i+1}/4</span>
+              </div>
+            ))}
+          </div>
+
+          <Eyebrow style={{marginBottom:10}}>Auto-evaluación ejecutiva (1–5)</Eyebrow>
+          {["Claridad del foco estratégico","Capacidad de ejecución del equipo","Disponibilidad de datos para decidir"].map((q,qi)=>(
+            <div key={qi} style={{...card,marginBottom:8}}>
+              <div style={{fontSize:13,color:B.muted,marginBottom:10}}>{q}</div>
+              <div style={{display:"flex",gap:6}}>
+                {[1,2,3,4,5].map(n=>(
+                  <button key={n} onClick={()=>{const ns={...scale,[qi]:n};setScale(ns);persistDiag({diagScale:ns});}} style={{flex:1,height:32,borderRadius:6,border:`0.5px solid ${scale[qi]===n?B.blue:B.border}`,background:scale[qi]===n?B.blue:B.bg3,cursor:"pointer",fontSize:12,fontFamily:"DM Mono",color:scale[qi]===n?"#fff":B.muted,transition:"all .15s"}}>{n}</button>
+                ))}
+              </div>
+            </div>
+          ))}
+
+          <div style={{marginTop:16,marginBottom:4}}>
+            <Eyebrow style={{marginBottom:8}}>Comentarios y contexto</Eyebrow>
+            <textarea value={comment} onChange={e=>setComment(e.target.value)} onBlur={saveComment} placeholder="Describe los principales desafíos en este módulo..."/>
+            <div style={{fontSize:10,color:B.border,fontFamily:"DM Mono",marginTop:4}}>Se guarda automáticamente al salir del campo</div>
+          </div>
+          <div style={{display:"flex",gap:8,marginTop:12}}>
+            <button style={btn(true)} onClick={handleDiag}>Procesar diagnóstico con IA ↗</button>
+            <button style={btn(false)} onClick={saveComment}>Guardar</button>
+          </div>
+          {diag.show&&<AIPanel loading={diag.loading} text={diag.text}/>}
+        </div>
+      )}
+
+      {/* ── DASHBOARD ── */}
+      {tab==="dashboard"&&(
+        <div>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:12,marginBottom:16}}>
+            {mod.kpis.map((k,i)=>(
+              <div key={i} style={card}>
+                <Eyebrow style={{marginBottom:8}}>{k.label}</Eyebrow>
+                <div style={{fontSize:26,fontWeight:700,fontFamily:"DM Mono",color:B.blue}}>{k.val>0?k.val:"—"}</div>
+                <div style={{height:3,background:B.border,borderRadius:2,marginTop:10,overflow:"hidden"}}>
+                  <div style={{height:"100%",width:`${k.val}%`,background:`linear-gradient(90deg,${B.blueDark},${B.blue})`,borderRadius:2,transition:"width .8s"}}/>
+                </div>
+              </div>
+            ))}
+          </div>
+          <div style={{...card,marginBottom:12}}>
+            <Eyebrow style={{marginBottom:10}}>Evolución del módulo</Eyebrow>
+            <div style={{height:130}}><MiniChart mod={mod}/></div>
+          </div>
+          <div style={card}>
+            <Eyebrow style={{marginBottom:10}}>Pre / Post intervención</Eyebrow>
+            {mod.kpis.map((k,i)=>(
+              <div key={i} style={{display:"flex",alignItems:"center",gap:12,padding:"8px 0",borderBottom:`0.5px solid rgba(30,45,74,.5)`}}>
+                <div style={{flex:1,fontSize:12,color:B.muted}}>{k.label}</div>
+                <div style={{display:"flex",gap:6,alignItems:"center"}}>
+                  <span style={{fontSize:10,color:B.border,fontFamily:"DM Mono"}}>Pre</span>
+                  <div style={{width:48,height:3,background:B.border,borderRadius:2}}><div style={{height:"100%",width:`${Math.max(5,k.val-18)}%`,background:B.border,borderRadius:2}}/></div>
+                  <span style={{fontSize:10,color:B.border,fontFamily:"DM Mono"}}>Post</span>
+                  <div style={{width:48,height:3,background:B.border,borderRadius:2}}><div style={{height:"100%",width:`${k.val}%`,background:B.blue,borderRadius:2}}/></div>
+                </div>
+                <div style={{fontSize:12,fontWeight:600,fontFamily:"DM Mono",color:B.blue,minWidth:40,textAlign:"right"}}>{k.val>0?`+${Math.round(k.val*.35)}%`:"—"}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+      </>)}
+    </div>
+  );
+}
+
+/* ══════════════════════════════════════════
+   GaaS VIEW
+══════════════════════════════════════════ */
+function GaaSView({gaas,setGaas,apiKey,addToast}){
+  const [ai,setAi]=useState({show:true,loading:false,text:"Activa o desactiva servicios y selecciona los indicadores clave para obtener análisis de tu mix GaaS."});
+  const toggle=(id)=>{setGaas(g=>g.map(x=>x.id===id?{...x,active:!x.active}:x));};
+  const toggleInd=(gId,idx)=>setGaas(g=>g.map(x=>{
+    if(x.id!==gId||!x.active)return x;
+    const sel=x.indicators.filter(i=>i.sel).length;
+    if(!x.indicators[idx].sel&&sel>=3){addToast("Máximo 3 indicadores por servicio","error");return x;}
+    const indicators=x.indicators.map((ind,i)=>i===idx?{...ind,sel:!ind.sel}:ind);
+    return{...x,indicators};
+  }));
+  const handleAnalyze=async()=>{
+    
+    setAi({show:true,loading:true,text:""});
+    const active=gaas.filter(g=>g.active);
+    const desc=active.map(g=>{const si=g.indicators.filter(i=>i.sel).map(i=>`${i.name}: ${i.val}`).join("; ");return`${g.name} (${si})`;}).join(" | ");
+    const p=`Consultor GaaS senior ALTKimia. Servicios activos: ${desc}. Analiza el mix, identifica sinergias y brechas. Da 2 recomendaciones estratégicas concretas. Directo, ejecutivo, sin humo. Máximo 120 palabras.`;
+    try{const t=await callAI(p,apiKey);setAi({show:true,loading:false,text:t});addToast("Análisis GaaS guardado","success");}
+    catch(e){setAi({show:true,loading:false,text:`Error: ${e.message}`});addToast("Error IA","error");}
+  };
+  const btn=(p)=>({padding:"8px 18px",borderRadius:6,fontSize:12,fontFamily:"inherit",fontWeight:600,cursor:"pointer",letterSpacing:".3px",border:`0.5px solid ${p?B.blue:B.border}`,background:p?B.blue:"transparent",color:p?"#fff":B.muted});
+  const card={background:B.bg2,border:`0.5px solid ${B.border}`,borderRadius:8,padding:14};
+  return(
+    <div style={{animation:"fadeIn .25s ease"}}>
+      <div style={{marginBottom:24}}>
+        <Eyebrow style={{marginBottom:6}}>Configuración</Eyebrow>
+        <h1 style={{fontSize:22,fontWeight:600,letterSpacing:"-0.5px",color:B.text,marginBottom:4}}>Servicios GaaS activos</h1>
+        <p style={{fontSize:13,color:B.muted}}>Selecciona servicios e indicadores — máx. 3 por servicio</p>
+      </div>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(2,1fr)",gap:12,marginBottom:16}}>
+        {gaas.map(g=>(
+          <div key={g.id} style={{...card,borderTop:`2px solid ${g.active?B.blue:B.border}`,opacity:g.active?1:.55,transition:"all .2s"}}>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12}}>
+              <div style={{fontSize:13,fontWeight:500,color:g.active?B.text:B.muted}}>{g.name}</div>
+              <div onClick={()=>toggle(g.id)} style={{width:34,height:19,borderRadius:10,cursor:"pointer",background:g.active?B.blue:B.border,position:"relative",transition:"background .2s",flexShrink:0}}>
+                <div style={{width:13,height:13,borderRadius:"50%",background:"#fff",position:"absolute",top:3,left:g.active?18:3,transition:"left .2s"}}/>
+              </div>
+            </div>
+            {g.indicators.map((ind,i)=>(
+              <div key={i} onClick={()=>toggleInd(g.id,i)} title={ind.desc} style={{display:"flex",alignItems:"center",gap:8,padding:"7px 10px",background:ind.sel&&g.active?"rgba(33,150,243,.08)":B.bg3,borderRadius:6,border:`0.5px solid ${ind.sel&&g.active?"rgba(33,150,243,.35)":B.border}`,cursor:"pointer",marginBottom:5,transition:"all .15s"}}>
+                <div style={{flex:1,fontSize:11,color:B.muted,lineHeight:1.3}}>{ind.name}</div>
+                <div style={{fontSize:12,fontWeight:600,fontFamily:"DM Mono",color:ind.sel&&g.active?B.blue:B.muted,margin:"0 6px"}}>{ind.val}</div>
+                <div style={{width:15,height:15,borderRadius:4,border:`1px solid ${ind.sel&&g.active?B.blue:B.border}`,background:ind.sel&&g.active?B.blue:"transparent",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+                  {ind.sel&&g.active&&<svg viewBox="0 0 10 10" fill="none" stroke="#fff" strokeWidth="2" style={{width:8,height:8}}><polyline points="1,5 4,8 9,2"/></svg>}
+                </div>
+              </div>
+            ))}
+            <div style={{fontSize:10,color:B.border,fontFamily:"DM Mono",marginTop:6,letterSpacing:".5px"}}>CLICK PARA SELECCIONAR · MÁX. 3</div>
+          </div>
+        ))}
+      </div>
+      {ai.show&&<AIPanel loading={ai.loading} text={ai.text}/>}
+      <div style={{display:"flex",gap:8,marginTop:16}}>
+        <button style={btn(true)} onClick={handleAnalyze}>Analizar mix con IA ↗</button>
+      </div>
+    </div>
+  );
+}
+
+/* ══════════════════════════════════════════
+   DASHBOARD GENERAL
+══════════════════════════════════════════ */
+function Dashboard({modules,gaas,onNav,settings,healthHistory,setHealthHistory,addToast,apiKey,addEvent}){
+  const global=Math.round(modules.reduce((a,m)=>a+m.progress,0)/modules.length);
+  const [ai,setAi]=useState({show:false,loading:false,text:""});
+  const card={background:B.bg2,border:`0.5px solid ${B.border}`,borderRadius:8,padding:"14px 16px"};
+
+  const handleGlobalAI=async()=>{
+    
+    setAi({show:true,loading:true,text:""});
+    const progStr=modules.map(m=>`${m.id.toUpperCase()}(${m.progress||0}%)`).join(", ");
+    const p=`Eres director de consultoría ALTKimia. Empresa: "${settings.empresa||"cliente"}". Avance global MESA: ${global}%. Por módulo: ${progStr}. Salud empresarial actual: ${healthHistory[healthHistory.length-1]?.val||"N/A"}/10. Da un análisis ejecutivo del estado global del proceso, la palanca más importante para acelerar el avance y el riesgo sistémico más relevante. Máximo 150 palabras. Tono ALTKimia: directo, sin rodeos.`;
+    try{const t=await callAI(p,apiKey);setAi({show:true,loading:false,text:t});addToast("Análisis global guardado","success");}
+    catch(e){setAi({show:true,loading:false,text:`Error: ${e.message}`});addToast("Error IA","error");}
+  };
+
+  return(
+    <div style={{animation:"fadeIn .25s ease"}}>
+      <div style={{marginBottom:24}}>
+        <Eyebrow style={{marginBottom:6}}>ALTKimia · Método MESA</Eyebrow>
+        <h1 style={{fontSize:22,fontWeight:600,letterSpacing:"-0.5px",color:B.text,marginBottom:4}}>Dashboard General</h1>
+        <p style={{fontSize:13,color:B.muted}}>{settings.empresa||"Empresa"} · {settings.sector||"—"} · {settings.etapa||"—"}</p>
+      </div>
+
+      {/* KPIs globales */}
+      <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:12,marginBottom:16}}>
+        {[
+          {ey:"Avance global",val:`${global}%`,d:"↑ +8% este mes",ok:true},
+          {ey:"Módulos activos",val:`${modules.filter(m=>(m.progress||0)>0).length}/6`,d:"2 pendientes de iniciar",ok:null},
+          {ey:"Salud empresarial",val:`${healthHistory[healthHistory.length-1]?.val||"—"}`,d:`↑ desde ${healthHistory[0]?.val||"—"} inicial`,ok:true},
+          {ey:"Alertas activas",val:"3",d:"2 críticas — M4 financiero",ok:false}
+        ].map((m,i)=>(
+          <div key={i} style={card}>
+            <Eyebrow style={{marginBottom:8}}>{m.ey}</Eyebrow>
+            <div style={{fontSize:28,fontWeight:700,fontFamily:"DM Mono",color:B.blue,letterSpacing:"-1px"}}>{m.val}</div>
+            <div style={{fontSize:11,marginTop:4,color:m.ok===true?B.green:m.ok===false?B.red:B.muted}}>{m.d}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Gráfico salud */}
+      <div style={{...card,marginBottom:12}}>
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12,flexWrap:"wrap",gap:8}}>
+          <Eyebrow>Evolución de salud empresarial</Eyebrow>
+          <div style={{display:"flex",gap:12,alignItems:"center"}}>
+            <div style={{display:"flex",gap:10,fontSize:11}}>
+              <span style={{display:"flex",alignItems:"center",gap:4,color:B.muted,fontFamily:"DM Mono"}}><span style={{width:10,height:2,background:B.blue,display:"inline-block",borderRadius:1}}/>Empresa</span>
+              <span style={{display:"flex",alignItems:"center",gap:4,color:B.muted,fontFamily:"DM Mono"}}><span style={{width:10,height:1,background:B.border,display:"inline-block"}}/>Benchmark</span>
+            </div>
+            <button onClick={handleGlobalAI} style={{padding:"5px 12px",background:"transparent",border:`0.5px solid rgba(33,150,243,.3)`,borderRadius:6,color:B.blueLight,fontSize:11,cursor:"pointer",fontFamily:"inherit"}}>Análisis IA ↗</button>
+          </div>
+        </div>
+        <div style={{height:175}}><HealthChart history={healthHistory}/></div>
+      </div>
+      {ai.show&&<AIPanel loading={ai.loading} text={ai.text}/>}
+
+      {/* Módulos + Radar */}
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:12}}>
+        <div style={card}>
+          <Eyebrow style={{marginBottom:12}}>Avance por módulo MESA</Eyebrow>
+          {modules.map(m=>(
+            <div key={m.id} onClick={()=>onNav(m.id)} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 0",borderBottom:`0.5px solid rgba(30,45,74,.5)`,cursor:"pointer"}}>
+              <div style={{fontSize:10,fontFamily:"DM Mono",color:B.blue,minWidth:28}}>{m.id.toUpperCase()}</div>
+              <div style={{flex:1,fontSize:12,color:B.muted,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{m.name}</div>
+              {!m.unlocked&&<span style={{fontSize:10,color:B.red}}>🔒</span>}
+              <div style={{width:60,height:3,background:B.border,borderRadius:2,flexShrink:0}}><div style={{height:"100%",width:`${m.progress||0}%`,background:B.blue,borderRadius:2}}/></div>
+              <div style={{fontSize:11,fontFamily:"DM Mono",color:B.blue,minWidth:32,textAlign:"right"}}>{m.progress||0}%</div>
+            </div>
+          ))}
+        </div>
+        <div style={card}>
+          <Eyebrow style={{marginBottom:6}}>Radar diagnóstico</Eyebrow>
+          <div style={{height:185}}><RadarSVG modules={modules}/></div>
+        </div>
+      </div>
+
+      {/* Fase MESA visual */}
+      <div style={{...card,marginBottom:12}}>
+        <Eyebrow style={{marginBottom:12}}>Estado por fase MESA</Eyebrow>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(5,1fr)",gap:8}}>
+          {[
+            {l:"M",n:"Mapear",m:modules[0]},
+            {l:"E",n:"Estructurar",m:modules[1]},
+            {l:"S",n:"Sistematizar",m:modules[2]},
+            {l:"A",n:"Escalar",m:modules[3]},
+            {l:"+",n:"Autonomizar",m:modules[4]}
+          ].map((f,i)=>{
+            const prog=f.m?.progress||0;
+            const col=prog===100?B.green:prog>0?B.blue:B.border;
+            return(
+              <div key={i} style={{textAlign:"center",padding:"12px 8px",background:B.bg3,borderRadius:8,border:`0.5px solid ${prog>0?B.border:"rgba(30,45,74,.4)"}`,cursor:"pointer",position:"relative"}} onClick={()=>onNav(f.m?.id)}>
+                {i<4&&<div style={{position:"absolute",right:-12,top:"50%",transform:"translateY(-50%)",fontSize:10,color:B.border,zIndex:1}}>→</div>}
+                <div style={{fontSize:18,fontWeight:700,color:col,fontFamily:"DM Mono",marginBottom:4}}>{f.l}</div>
+                <div style={{fontSize:11,fontWeight:500,color:B.text,marginBottom:3}}>{f.n}</div>
+                <div style={{fontSize:10,fontFamily:"DM Mono",color:col}}>{prog}%</div>
+                {prog===100&&<div style={{position:"absolute",top:4,right:4,width:8,height:8,borderRadius:"50%",background:B.green}}/>}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Timeline */}
+      <div style={card}>
+        <Eyebrow style={{marginBottom:12}}>Actividad reciente</Eyebrow>
+        <div style={{position:"relative",paddingLeft:20}}>
+          <div style={{position:"absolute",left:6,top:0,bottom:0,width:1,background:B.border}}/>
+          {(settings.events||[]).slice(-5).reverse().map((t,i)=>(
+            <div key={i} style={{position:"relative",paddingLeft:18,paddingBottom:12}}>
+              <div style={{position:"absolute",left:-14,top:4,width:8,height:8,borderRadius:"50%",background:B.blue,border:`2px solid ${B.bg1}`}}/>
+              <div style={{fontSize:10,fontFamily:"DM Mono",color:B.border,marginBottom:2,letterSpacing:".5px"}}>{t.date}</div>
+              <div style={{fontSize:12,color:B.muted}}>{t.text}</div>
+            </div>
+          ))}
+          {(!settings.events||settings.events.length===0)&&<div style={{fontSize:13,color:B.border,paddingLeft:18}}>No hay actividad registrada aún</div>}
+        </div>
+      </div>
+
+      {/* CTA */}
+      <div style={{background:"linear-gradient(135deg,rgba(21,101,192,.15),rgba(33,150,243,.08))",border:"0.5px solid rgba(33,150,243,.2)",borderRadius:8,padding:"16px 20px",display:"flex",alignItems:"center",justifyContent:"space-between",gap:16,marginTop:16,flexWrap:"wrap"}}>
+        <div>
+          <div style={{fontSize:14,fontWeight:600,color:B.text,marginBottom:3}}>
+            <span style={{color:B.blue}}>alt</span><span style={{color:B.text}}>kimia</span> — Gerencia as a Service
+          </div>
+          <div style={{fontSize:12,color:B.muted}}>La improvisación no escala. La gestión sí.</div>
+        </div>
+        <a href="https://calendly.com/antovillalobos69/30min" target="_blank" rel="noopener" style={{background:B.blue,color:"#fff",padding:"9px 20px",borderRadius:6,fontSize:12,fontWeight:600,textDecoration:"none",display:"inline-flex",alignItems:"center",gap:6,letterSpacing:".3px",flexShrink:0}}>
+          <svg viewBox="0 0 32 32" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" style={{width:12,height:12}}><rect x="4" y="5" width="24" height="24" rx="3"/><line x1="10" y1="3" x2="10" y2="8"/><line x1="22" y1="3" x2="22" y2="8"/><line x1="4" y1="13" x2="28" y2="13"/></svg>
+          Agenda sesión estratégica
+        </a>
+      </div>
+    </div>
+  );
+}
+
+/* ══════════════════════════════════════════
+   APP ROOT — Orquestador principal + persistencia
+══════════════════════════════════════════ */
+function App(){
+  // ── Cargar desde localStorage o usar defaults ──
+  const [modules,setModules]=useState(()=>{
+    const s=loadStore();
+    if(s?.modules){
+      return MODULES_DEF.map(def=>{
+        const saved=s.modules.find(m=>m.id===def.id);
+        return saved?{...def,...saved,resources:def.resources,quiz:def.quiz,nota:def.nota}:def;
+      });
+    }
+    return MODULES_DEF;
+  });
+
+  const [gaas,setGaas]=useState(()=>{
+    const s=loadStore();
+    if(s?.gaas) return GAAS_DEF.map(def=>{const sv=s.gaas.find(g=>g.id===def.id);return sv?{...def,...sv}:def;});
+    return GAAS_DEF;
+  });
+
+  const [settings,setSettings]=useState(()=>{
+    const s=loadStore();
+    return s?.settings||{empresa:"Empresa Demo S.A.",sector:"SaaS · GovTech",etapa:"ScaleUp",responsable:"",apiKey:"",events:[]};
+  });
+
+  const [healthHistory,setHealthHistory]=useState(()=>{
+    const s=loadStore();return s?.healthHistory||HEALTH_HISTORY_DEF;
+  });
+
+  const [view,setView]=useState("dashboard");
+  const [toasts,setToasts]=useState([]);
+  const [showSettings,setShowSettings]=useState(false);
+  const [saveIndicator,setSaveIndicator]=useState(false);
+
+  // ── AUTO-SAVE: guarda cada vez que cambia algún estado relevante ──
+  useEffect(()=>{
+    const ok=saveStore({modules,gaas,settings,healthHistory});
+    if(ok){setSaveIndicator(true);setTimeout(()=>setSaveIndicator(false),1500);}
+  },[modules,gaas,settings,healthHistory]);
+
+  // ── Helpers ──
+  const addToast=(msg,type="success")=>setToasts(t=>[...t,{id:Date.now(),msg,type}]);
+  const removeToast=(id)=>setToasts(t=>t.filter(x=>x.id!==id));
+
+  const addEvent=useCallback((text)=>{
+    const ev={date:new Date().toLocaleDateString("es-CL"),text};
+    setSettings(p=>({...p,events:[...(p.events||[]),ev].slice(-20)}));
+  },[]);
+
+  const saveSettings=useCallback((newSettings)=>{
+    setSettings(newSettings);
+    addEvent("Configuración de empresa actualizada");
+    addToast("Configuración guardada","success");
+  },[]);
+
+  const currentMod=modules.find(m=>m.id===view);
+  const globalProgress=Math.round(modules.reduce((a,m)=>a+m.progress,0)/modules.length);
+
+  const navBtn=(active)=>({
+    display:"flex",alignItems:"center",gap:8,padding:"7px 10px",borderRadius:6,cursor:"pointer",
+    fontSize:12,color:active?B.blueLight:B.muted,
+    background:active?"rgba(33,150,243,.1)":"transparent",
+    border:`0.5px solid ${active?"rgba(33,150,243,.25)":"transparent"}`,
+    transition:"all .15s",width:"100%",textAlign:"left",fontFamily:"inherit",marginBottom:2
+  });
+
+  return(
+    <div style={{background:B.bg1,color:B.text,fontFamily:"'Inter',system-ui,sans-serif",minHeight:"100vh",display:"flex",flexDirection:"column",fontSize:14}}>
+
+      {/* ── TOPBAR ── */}
+      <div style={{background:B.bg2,borderBottom:`0.5px solid ${B.border}`,padding:"0 1.5rem",display:"flex",alignItems:"center",justifyContent:"space-between",height:52,position:"sticky",top:0,zIndex:100}}>
+        <div style={{display:"flex",alignItems:"center",gap:12,cursor:"pointer"}} onClick={()=>setView("dashboard")}>
+          <LogoMark size={30}/>
+          <div>
+            <span style={{fontFamily:"'Inter',sans-serif",fontWeight:700,fontSize:18,letterSpacing:"-0.5px"}}>
+              <span style={{color:B.blue}}>alt</span><span style={{color:B.text}}>kimia</span>
+            </span>
+            <div style={{fontSize:10,color:B.muted,fontFamily:"DM Mono",letterSpacing:"1px",marginTop:1}}>MESA · GaaS Platform</div>
+          </div>
+        </div>
+        <div style={{display:"flex",alignItems:"center",gap:10}}>
+          {/* Save indicator */}
+          <div style={{fontSize:10,fontFamily:"DM Mono",color:saveIndicator?B.green:B.border,transition:"color .3s",display:"flex",alignItems:"center",gap:4}}>
+            <div style={{width:5,height:5,borderRadius:"50%",background:saveIndicator?B.green:B.border,transition:"background .3s"}}/>
+            {saveIndicator?"Guardado":"Auto-guardado"}
+          </div>
+          <div style={{fontFamily:"DM Mono",fontSize:10,color:B.muted}}><span style={{color:B.blue,fontWeight:600}}>{globalProgress}%</span> global</div>
+          <Badge>{settings.empresa}</Badge>
+          <button onClick={()=>setShowSettings(true)} title="Configuración" style={{width:30,height:30,borderRadius:6,background:"transparent",border:`0.5px solid ${B.border}`,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",color:B.muted}}>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" style={{width:14,height:14}}><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-2 2 2 2 0 01-2-2v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 01-2-2 2 2 0 012-2h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 010-2.83 2 2 0 012.83 0l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 012-2 2 2 0 012 2v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 012 2 2 2 0 01-2 2h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
+          </button>
+          <button onClick={()=>exportPlan(modules,settings,gaas)} title="Exportar plan" style={{width:30,height:30,borderRadius:6,background:"transparent",border:`0.5px solid ${B.border}`,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",color:B.muted}}>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" style={{width:14,height:14}}><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          </button>
+          <button onClick={()=>{if(confirm("¿Resetear todos los datos? Esta acción no se puede deshacer.")){{clearStore();window.location.reload();}}}} title="Reset datos" style={{width:30,height:30,borderRadius:6,background:"transparent",border:`0.5px solid rgba(239,83,80,.3)`,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",color:B.red}}>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" style={{width:14,height:14}}><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 102.13-9.36L1 10"/></svg>
+          </button>
+        </div>
+      </div>
+
+      <div style={{display:"flex",flex:1}}>
+        {/* ── SIDEBAR ── */}
+        <div style={{width:215,background:B.bg2,borderRight:`0.5px solid ${B.border}`,padding:"1rem 0.75rem",display:"flex",flexDirection:"column",flexShrink:0,overflowY:"auto"}}>
+          {/* MESA chain */}
+          <div style={{display:"flex",gap:3,marginBottom:16,padding:"10px 8px",background:B.bg3,borderRadius:8,border:`0.5px solid ${B.border}`}}>
+            {[{l:"M",n:"Mapear"},{l:"E",n:"Estructurar"},{l:"S",n:"Sistematizar"},{l:"A",n:"Escalar"},{l:"+",n:"Autonomizar"}].map((p,i)=>(
+              <div key={i} style={{flex:1,textAlign:"center"}}>
+                <div style={{fontSize:9,fontFamily:"DM Mono",color:B.blue,fontWeight:600,letterSpacing:".5px"}}>{p.l}</div>
+                <div style={{fontSize:7,color:B.muted,marginTop:1,lineHeight:1.2,overflow:"hidden"}}>{p.n}</div>
+              </div>
+            ))}
+          </div>
+
+          <div style={{fontSize:9,fontWeight:600,letterSpacing:"2px",textTransform:"uppercase",color:B.border,marginBottom:6,fontFamily:"DM Mono"}}>Navegación</div>
+          {[{id:"dashboard",label:"Dashboard General"},{id:"gaas",label:"Servicios GaaS"}].map(n=>(
+            <button key={n.id} style={navBtn(view===n.id)} onClick={()=>setView(n.id)}>
+              <div style={{width:5,height:5,borderRadius:"50%",background:view===n.id?B.blue:B.muted,flexShrink:0}}/>
+              {n.label}
+            </button>
+          ))}
+
+          <div style={{fontSize:9,fontWeight:600,letterSpacing:"2px",textTransform:"uppercase",color:B.border,margin:"16px 0 6px",fontFamily:"DM Mono"}}>Módulos MESA</div>
+          {modules.map(m=>{
+            const prog=m.progress||0;
+            const isActive=view===m.id;
+            const locked=!m.unlocked;
+            return(
+              <button key={m.id} style={{...navBtn(isActive),opacity:locked?.7:1}} onClick={()=>setView(m.id)}>
+                <div style={{width:5,height:5,borderRadius:"50%",background:isActive?B.blue:prog>0?"rgba(33,150,243,.5)":B.border,flexShrink:0}}/>
+                <span style={{flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{m.id.toUpperCase()} · {m.name}</span>
+                {locked
+                  ?<span style={{fontSize:10,flexShrink:0}}>🔒</span>
+                  :<span style={{fontSize:10,fontFamily:"DM Mono",color:prog>0?B.blue:B.border,flexShrink:0}}>{prog}%</span>
+                }
+              </button>
+            );
+          })}
+
+          {/* Tagline + info guardado */}
+          <div style={{marginTop:"auto",paddingTop:16,borderTop:`0.5px solid ${B.border}`}}>
+            <div style={{fontSize:10,color:B.border,fontFamily:"DM Mono",lineHeight:1.5,letterSpacing:".3px",marginBottom:8}}>
+              "La improvisación no escala.<br/>La gestión sí."
+            </div>
+            {settings._saved&&(
+              <div style={{fontSize:9,color:B.border,fontFamily:"DM Mono"}}>
+                Guardado: {new Date(settings._saved||Date.now()).toLocaleTimeString("es-CL",{hour:"2-digit",minute:"2-digit"})}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* ── MAIN CONTENT ── */}
+        <div style={{flex:1,overflowY:"auto",padding:"2rem 1.75rem",minWidth:0,background:B.bg1,position:"relative"}}>
+          <div style={{position:"fixed",inset:0,backgroundImage:"radial-gradient(circle,rgba(33,150,243,.05) 1px,transparent 1px)",backgroundSize:"32px 32px",pointerEvents:"none",zIndex:0}}/>
+          <div style={{position:"relative",zIndex:1}}>
+            {view==="dashboard"&&<Dashboard modules={modules} gaas={gaas} onNav={setView} settings={settings} healthHistory={healthHistory} setHealthHistory={setHealthHistory} addToast={addToast} apiKey={settings.apiKey} addEvent={addEvent}/>}
+            {view==="gaas"&&<GaaSView gaas={gaas} setGaas={setGaas} apiKey={settings.apiKey} addToast={addToast}/>}
+            {currentMod&&<ModuleView mod={currentMod} modules={modules} setModules={setModules} apiKey={settings.apiKey} addToast={addToast} addEvent={addEvent}/>}
+          </div>
+        </div>
+      </div>
+
+      {/* ── MODALES Y OVERLAYS ── */}
+      {showSettings&&<SettingsModal settings={settings} onSave={saveSettings} onClose={()=>setShowSettings(false)}/>}
+
+      {/* ── TOAST STACK ── */}
+      <div style={{position:"fixed",bottom:24,right:24,zIndex:9999,display:"flex",flexDirection:"column",gap:8}}>
+        {toasts.map(t=><Toast key={t.id} msg={t.msg} type={t.type} onClose={()=>removeToast(t.id)}/>)}
+      </div>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
+</script>
+</body>
+</html>
