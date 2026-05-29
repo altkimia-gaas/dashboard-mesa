@@ -1,0 +1,1701 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ALTKimia — Plataforma MESA</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;}
+:root{--blue:#2196F3;--blue-dark:#1565C0;--blue-light:#42A5F5;--bg1:#080B12;--bg2:#0D1117;--bg3:#111827;--bg4:#161d2b;--text:#F0F4FF;--muted:#8B9DC3;--border:#1E2D4A;--green:#4CAF50;--amber:#FF9800;--red:#EF5350;}
+html,body{background:var(--bg1);color:var(--text);font-family:'Inter',system-ui,sans-serif;height:100%;line-height:1.6;}
+::-webkit-scrollbar{width:5px;height:5px;}::-webkit-scrollbar-track{background:var(--bg2);}::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px;}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+@keyframes bounce{0%,80%,100%{transform:translateY(0)}40%{transform:translateY(-5px)}}
+@keyframes fadeIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
+@keyframes toastIn{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:translateY(0)}}
+textarea,input[type=text],input[type=password]{background:var(--bg3);border:0.5px solid var(--border);border-radius:6px;color:var(--text);font-family:'Inter',sans-serif;font-size:13px;padding:9px 12px;outline:none;width:100%;transition:border-color .15s;}
+textarea{resize:vertical;min-height:80px;}
+textarea:focus,input:focus{border-color:rgba(33,150,243,.5);}
+input::placeholder,textarea::placeholder{color:var(--border);}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const {useState,useEffect,useRef,useCallback} = React;
+const B={blue:"#2196F3",blueDark:"#1565C0",blueLight:"#42A5F5",bg1:"#080B12",bg2:"#0D1117",bg3:"#111827",bg4:"#161d2b",text:"#F0F4FF",muted:"#8B9DC3",border:"#1E2D4A",green:"#4CAF50",amber:"#FF9800",red:"#EF5350"};
+
+/* PERSISTENCIA MULTICLIENTE */
+const ROOT_KEY="altkimia_mesa_v3";
+function loadRoot(){try{const r=localStorage.getItem(ROOT_KEY);return r?JSON.parse(r):{clients:{},activeId:null,apiKey:""};}catch{return{clients:{},activeId:null,apiKey:""};}}
+function saveRoot(data){try{localStorage.setItem(ROOT_KEY,JSON.stringify(data));}catch{}}
+function genId(){return"c_"+Date.now()+"_"+Math.random().toString(36).slice(2,6);}
+
+const GAAS_MODULE_MAP={
+  mentoria:["m1","m2","m3","m4","m5","m6"],
+  capacitacion:["m1","m2","m3","m4","m5","m6"],
+  consultoria:["m1","m2","m3","m4"],
+  networking:["m2","m6"],
+  financiamiento:["m4","m6"],
+  tecnologia:["m3","m6"]
+};
+
+const GAAS_DEF=[
+  {id:"mentoria",name:"Acompañamiento",active:false,indicators:[
+    {name:"Reuniones realizadas",val:"0/8",pct:0,sel:true,desc:"Cuántas reuniones se hicieron del total planificado"},
+    {name:"Satisfacción del acompañado",val:"—",pct:0,sel:true,desc:"Qué tan satisfecho está el empresario con el proceso"},
+    {name:"Tareas cumplidas",val:"—",pct:0,sel:false,desc:"De las tareas acordadas, cuántas se ejecutaron"}
+  ]},
+  {id:"capacitacion",name:"Capacitación",active:false,indicators:[
+    {name:"Avance en contenidos",val:"0%",pct:0,sel:true,desc:"Qué porcentaje del programa completó el equipo"},
+    {name:"Mejora en el tema aprendido",val:"—",pct:0,sel:true,desc:"Cuánto mejoró el conocimiento antes y después"},
+    {name:"Uso en el trabajo real",val:"—",pct:0,sel:false,desc:"Cuántos aplican lo aprendido en su día a día"}
+  ]},
+  {id:"consultoria",name:"Consultoría",active:false,indicators:[
+    {name:"Entregas completadas",val:"0/0",pct:0,sel:true,desc:"Cuántos entregables del plan ya están listos"},
+    {name:"Mejora en el resultado buscado",val:"—",pct:0,sel:false,desc:"Cuánto mejoró el indicador que queríamos mejorar"},
+    {name:"Satisfacción del cliente",val:"—",pct:0,sel:true,desc:"Nota de satisfacción del cliente (1 al 10)"}
+  ]},
+  {id:"networking",name:"Red de contactos",active:false,indicators:[
+    {name:"Contactos nuevos activados",val:"0",pct:0,sel:false,desc:"Cuántos contactos estratégicos se lograron"},
+    {name:"Reuniones de negocios",val:"0",pct:0,sel:false,desc:"Reuniones concretas que se realizaron"},
+    {name:"Alianzas en curso",val:"0",pct:0,sel:false,desc:"Alianzas o acuerdos que están avanzando"}
+  ]},
+  {id:"financiamiento",name:"Financiamiento",active:false,indicators:[
+    {name:"Postulaciones enviadas",val:"0",pct:0,sel:false,desc:"A cuántos fondos o apoyos se postuló"},
+    {name:"Postulaciones aprobadas",val:"—",pct:0,sel:false,desc:"Qué porcentaje de las postulaciones resultó exitoso"},
+    {name:"Recursos obtenidos",val:"$0",pct:0,sel:false,desc:"Total de financiamiento externo conseguido"}
+  ]},
+  {id:"tecnologia",name:"Tecnología",active:false,indicators:[
+    {name:"Herramientas en uso",val:"0",pct:0,sel:true,desc:"Cuántas herramientas digitales ya están funcionando"},
+    {name:"Tiempo hasta ponerla en marcha",val:"—",pct:0,sel:false,desc:"Semanas que toma implementar una herramienta nueva"},
+    {name:"Retorno estimado",val:"—",pct:0,sel:true,desc:"Cuánto se recupera por cada peso invertido en tecnología"}
+  ]}
+];
+
+const MODULES_DEF=[
+  {id:"m1",letter:"M",phase:"Mapear",name:"¿Quiénes somos y a dónde vamos?",foco:"Definir el propósito, la oferta y el modelo de negocio",unlocked:true,progress:0,
+   steps:[
+     {id:"s1",title:"¿Por qué existe esta empresa?",desc:"Conversación para entender el propósito real del negocio",state:"active"},
+     {id:"s2",title:"¿Cómo ganamos dinero?",desc:"Describir de forma simple cómo funciona el negocio",state:"pending"},
+     {id:"s3",title:"¿En qué somos diferentes?",desc:"Identificar qué nos hace únicos frente a la competencia",state:"pending"},
+     {id:"s4",title:"¿A dónde queremos llegar?",desc:"Definir la meta clara de la empresa para los próximos 3 años",state:"pending"},
+     {id:"s5",title:"Revisión y cierre de etapa",desc:"Confirmar los aprendizajes y dar por cerrada esta etapa",state:"pending"}
+   ],
+   nota:"Antes de crecer, hay que saber quién eres. Una empresa con propósito claro toma mejores decisiones, especialmente cuando las cosas se complican.",
+   quiz:{q:"¿Qué tan claro tiene tu equipo para qué existe la empresa y qué la hace diferente?",opts:["No lo hemos conversado formalmente","Existe pero cada uno lo entiende a su manera","Está escrito y el equipo lo conoce","Es parte del trabajo diario y guía nuestras decisiones"],scores:[1,2,3,4]},
+   kpis:[{label:"Claridad de propósito",val:0},{label:"Equipo alineado",val:0},{label:"Oferta diferenciada",val:0}],
+   resources:[
+     {type:"doc",name:"Plantilla: ¿Para qué existimos?",url:"#"},{type:"doc",name:"Plantilla: Cómo funciona nuestro negocio",url:"#"},
+     {type:"video",name:"Video: Definir el propósito en 30 minutos",url:"#",dur:"12 min"},{type:"video",name:"Video: Cómo diferenciarse de la competencia",url:"#",dur:"9 min"},
+     {type:"quiz",name:"Evaluación inicial de etapa",url:"#"},{type:"quiz",name:"Revisión de cierre de etapa",url:"#"}
+   ]},
+  {id:"m2",letter:"E",phase:"Estructurar",name:"¿A quién le vendemos y qué necesita?",foco:"Conocer a fondo al cliente y ajustar la oferta a sus necesidades reales",unlocked:false,progress:0,
+   steps:[
+     {id:"s1",title:"¿Quién es nuestro cliente ideal?",desc:"Describir con detalle a la persona o empresa a quien mejor le servimos",state:"pending"},
+     {id:"s2",title:"¿Qué problema resuelve nuestro producto o servicio?",desc:"Entender qué necesita el cliente y por qué nos elegiría a nosotros",state:"pending"},
+     {id:"s3",title:"¿Cómo se siente nuestro cliente hoy?",desc:"Ponernos en los zapatos del cliente para entender su experiencia",state:"pending"},
+     {id:"s4",title:"¿Nuestra oferta responde a esa necesidad?",desc:"Ajustar lo que ofrecemos según lo que el cliente realmente valora",state:"pending"},
+     {id:"s5",title:"Revisión y cierre de etapa",desc:"Confirmar los aprendizajes y dar por cerrada esta etapa",state:"pending"}
+   ],
+   nota:"No alcanza con tener un buen producto. Hay que entender a quién le sirve, por qué lo necesita y cómo toma la decisión de compra.",
+   quiz:{q:"¿Qué tan bien conoces a la persona o empresa que te compra?",opts:["Operamos por intuición, sin datos reales","Tenemos una idea general pero no está documentada","Tenemos perfiles definidos con información real","Conocemos muy bien a nuestros clientes y lo actualizamos seguido"],scores:[1,2,3,4]},
+   kpis:[{label:"Claridad del cliente ideal",val:0},{label:"Satisfacción de clientes",val:0},{label:"Ajuste oferta-necesidad",val:0}],
+   resources:[
+     {type:"doc",name:"Plantilla: Perfil del cliente ideal",url:"#"},{type:"doc",name:"Plantilla: Qué siente y qué necesita mi cliente",url:"#"},
+     {type:"video",name:"Video: Cómo conocer a tu cliente de verdad",url:"#",dur:"14 min"},{type:"video",name:"Video: Ajustar tu oferta a lo que el cliente quiere",url:"#",dur:"11 min"},
+     {type:"quiz",name:"Evaluación inicial de etapa",url:"#"},{type:"quiz",name:"Revisión de cierre de etapa",url:"#"}
+   ]},
+  {id:"m3",letter:"S",phase:"Sistematizar",name:"¿Cómo funciona la empresa por dentro?",foco:"Ordenar los procesos para que el negocio funcione bien sin depender de una sola persona",unlocked:false,progress:0,
+   steps:[
+     {id:"s1",title:"¿Cómo hacemos las cosas hoy?",desc:"Describir los pasos principales de cómo operamos actualmente",state:"pending"},
+     {id:"s2",title:"¿Dónde se pierde tiempo o dinero?",desc:"Identificar los puntos donde el proceso se traba o se hace ineficiente",state:"pending"},
+     {id:"s3",title:"¿Cómo deberíamos hacerlo?",desc:"Diseñar una forma mejor de operar, aprovechando tecnología si aplica",state:"pending"},
+     {id:"s4",title:"¿Cómo medimos que lo estamos haciendo bien?",desc:"Definir los números que nos dicen si los procesos están funcionando",state:"pending"},
+     {id:"s5",title:"Revisión y cierre de etapa",desc:"Confirmar los aprendizajes y dar por cerrada esta etapa",state:"pending"}
+   ],
+   nota:"Un negocio que depende de una sola persona no puede crecer. El objetivo es que las cosas funcionen bien aunque el dueño no esté mirando.",
+   quiz:{q:"¿Qué pasa en tu empresa si la persona clave no está disponible por una semana?",opts:["Se para todo, dependemos de esa persona","Hay problemas serios pero se puede funcionar","Funciona con algo de dificultad","Funciona sin problemas, todo está documentado"],scores:[1,2,3,4]},
+   kpis:[{label:"Procesos documentados",val:0},{label:"Tiempo de respuesta",val:0},{label:"Tareas automatizadas",val:0}],
+   resources:[
+     {type:"doc",name:"Plantilla: Cómo operamos hoy",url:"#"},{type:"doc",name:"Plantilla: Indicadores de operación",url:"#"},
+     {type:"video",name:"Video: Ordenar procesos sin complicarse",url:"#",dur:"16 min"},{type:"video",name:"Video: Qué tareas puede hacer la tecnología por ti",url:"#",dur:"13 min"},
+     {type:"quiz",name:"Evaluación inicial de etapa",url:"#"},{type:"quiz",name:"Revisión de cierre de etapa",url:"#"}
+   ]},
+  {id:"m4",letter:"A",phase:"Escalar",name:"¿Cómo está la salud financiera del negocio?",foco:"Entender los números del negocio para tomar mejores decisiones y crecer con seguridad",unlocked:false,progress:0,
+   steps:[
+     {id:"s1",title:"¿Cómo están nuestras finanzas hoy?",desc:"Revisar ingresos, gastos y caja de forma simple y clara",state:"pending"},
+     {id:"s2",title:"¿Cuánto nos cuesta operar?",desc:"Separar los gastos fijos de los variables y entender cada uno",state:"pending"},
+     {id:"s3",title:"¿Cuánto dinero tendremos en los próximos meses?",desc:"Proyectar el flujo de caja para anticipar problemas o aprovechar oportunidades",state:"pending"},
+     {id:"s4",title:"¿Cuánto ganamos por cada cliente?",desc:"Calcular cuánto nos cuesta conseguir un cliente y cuánto nos deja",state:"pending"},
+     {id:"s5",title:"Revisión y cierre de etapa",desc:"Confirmar los aprendizajes y dar por cerrada esta etapa",state:"pending"}
+   ],
+   nota:"No hay que ser contador para entender los números del negocio. Pero sí hay que mirarlos seguido, porque los problemas financieros avisan antes de llegar.",
+   quiz:{q:"¿Qué tan claro tienes cuánto dinero entrará y saldrá del negocio en los próximos 3 meses?",opts:["No tenemos claridad sobre eso","Tenemos una idea pero sin números concretos","Tenemos una proyección aunque con algo de incertidumbre","Tenemos un modelo financiero claro y lo revisamos seguido"],scores:[1,2,3,4]},
+   kpis:[{label:"Margen de ganancia",val:0},{label:"Meses de caja disponible",val:0},{label:"Ganancia por cliente",val:0}],
+   resources:[
+     {type:"doc",name:"Plantilla: Estado financiero simple",url:"#"},{type:"doc",name:"Plantilla: Proyección de caja 12 meses",url:"#"},
+     {type:"video",name:"Video: Entender las finanzas sin ser contador",url:"#",dur:"18 min"},{type:"video",name:"Video: Cuánto me cuesta y cuánto me deja cada cliente",url:"#",dur:"12 min"},
+     {type:"quiz",name:"Evaluación inicial de etapa",url:"#"},{type:"quiz",name:"Revisión de cierre de etapa",url:"#"}
+   ]},
+  {id:"m5",letter:"+",phase:"Autonomizar",name:"¿Cómo está nuestro equipo?",foco:"Construir un equipo que funcione bien, con roles claros y un ambiente sano de trabajo",unlocked:false,progress:0,
+   steps:[
+     {id:"s1",title:"¿Qué capacidades tiene hoy nuestro equipo?",desc:"Revisar las habilidades del equipo y dónde hay brechas",state:"pending"},
+     {id:"s2",title:"¿Cada uno sabe bien qué se espera de él?",desc:"Definir roles y responsabilidades de forma clara",state:"pending"},
+     {id:"s3",title:"¿Cómo es el ambiente de trabajo?",desc:"Entender si el equipo está motivado y comprometido con la empresa",state:"pending"},
+     {id:"s4",title:"¿Cómo hacemos crecer a las personas?",desc:"Planificar capacitación, nuevas contrataciones y cómo retener al equipo",state:"pending"},
+     {id:"s5",title:"Revisión y cierre de etapa",desc:"Confirmar los aprendizajes y dar por cerrada esta etapa",state:"pending"}
+   ],
+   nota:"Las estrategias las ejecutan personas. Un equipo motivado con una estrategia sencilla le gana a un equipo desmotivado con una estrategia brillante.",
+   quiz:{q:"¿Qué tan claro tiene cada persona de tu equipo su rol y cómo contribuye al negocio?",opts:["Hay confusión frecuente sobre quién hace qué","Cada uno sabe lo suyo pero no está escrito","Los roles están definidos y se comunican con regularidad","Todos saben exactamente qué se espera de ellos"],scores:[1,2,3,4]},
+   kpis:[{label:"Motivación del equipo",val:0},{label:"Claridad de roles",val:0},{label:"Personas que se quedan",val:0}],
+   resources:[
+     {type:"doc",name:"Plantilla: Roles y responsabilidades",url:"#"},{type:"doc",name:"Plantilla: Encuesta de clima laboral",url:"#"},
+     {type:"video",name:"Video: Cómo liderar equipos pequeños",url:"#",dur:"15 min"},{type:"video",name:"Video: Construir cultura desde el primer día",url:"#",dur:"11 min"},
+     {type:"quiz",name:"Evaluación inicial de etapa",url:"#"},{type:"quiz",name:"Revisión de cierre de etapa",url:"#"}
+   ]},
+  {id:"m6",letter:"+",phase:"Autonomizar",name:"¿Estamos listos para crecer?",foco:"Preparar la empresa para crecer de forma ordenada, sin perder lo que ya funciona",unlocked:false,progress:0,
+   steps:[
+     {id:"s1",title:"¿Podemos crecer con lo que tenemos hoy?",desc:"Revisar si la empresa está lista para escalar sin romperse",state:"pending"},
+     {id:"s2",title:"¿Cómo vamos a conseguir más clientes?",desc:"Definir los canales y acciones concretas para crecer",state:"pending"},
+     {id:"s3",title:"¿Qué tecnología necesitamos para crecer?",desc:"Identificar herramientas que permitan operar a mayor escala",state:"pending"},
+     {id:"s4",title:"¿Cuál es nuestro plan de crecimiento?",desc:"Armar un plan a 18 meses con metas claras y medibles",state:"pending"},
+     {id:"s5",title:"Revisión y cierre de etapa",desc:"Confirmar los aprendizajes y dar por cerrada esta etapa",state:"pending"}
+   ],
+   nota:"Crecer sin estar preparado es peligroso. Primero hay que tener el negocio funcionando bien, después hay que ponerle más gasolina.",
+   quiz:{q:"¿Podría tu negocio atender el doble de clientes sin que la calidad o el servicio se vean afectados?",opts:["No, nos desbordaríamos","Podríamos intentarlo pero con mucha dificultad","Sí, con algunos ajustes menores","Sí, estamos preparados para escalar"],scores:[1,2,3,4]},
+   kpis:[{label:"Preparación para crecer",val:0},{label:"Ritmo de crecimiento",val:0},{label:"Uso de tecnología",val:0}],
+   resources:[
+     {type:"doc",name:"Plantilla: ¿Estamos listos para crecer?",url:"#"},{type:"doc",name:"Plantilla: Plan de crecimiento 18 meses",url:"#"},
+     {type:"video",name:"Video: Cómo crecer sin perder el control",url:"#",dur:"20 min"},{type:"video",name:"Video: Herramientas para escalar el negocio",url:"#",dur:"17 min"},
+     {type:"quiz",name:"Evaluación inicial de etapa",url:"#"},{type:"quiz",name:"Revisión de cierre de etapa",url:"#"}
+   ]}
+];
+
+const HEALTH_DEF=[{label:"Inicio",val:5.2},{label:"Mes 1",val:5.8},{label:"Mes 2",val:6.1},{label:"Mes 3",val:6.4},{label:"Mes 4",val:6.6},{label:"Actual",val:6.8}];
+
+function newClient(nombre,sector,etapa,responsable){
+  return{id:genId(),nombre,sector,etapa,responsable,createdAt:new Date().toISOString(),
+    modules:MODULES_DEF.map(m=>({...m,steps:m.steps.map(s=>({...s})),kpis:m.kpis.map(k=>({...k}))})),
+    gaas:JSON.parse(JSON.stringify(GAAS_DEF)),
+    health:JSON.parse(JSON.stringify(HEALTH_DEF)),events:[]};
+}
+
+async function callAI(prompt,apiKey){
+  const key=apiKey||"AIzaSyDm579PVp9tRaR2jNXzbTE3-sS8F7x4xDA";
+  const TARGET=`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${key}`;
+  const BODY=JSON.stringify({contents:[{parts:[{text:prompt}]}],generationConfig:{maxOutputTokens:1000}});
+  try{
+    const r=await fetch(TARGET,{method:"POST",headers:{"Content-Type":"application/json"},body:BODY});
+    const d=await r.json();
+    if(d.error) throw new Error(d.error.message);
+    const t=d.candidates?.[0]?.content?.parts?.[0]?.text;
+    if(t) return t; throw new Error("Sin respuesta");
+  }catch(e1){
+    try{
+      const r2=await fetch("https://corsproxy.io/?"+encodeURIComponent(TARGET),{method:"POST",headers:{"Content-Type":"application/json"},body:BODY});
+      const d2=await r2.json();
+      if(d2.error) throw new Error(d2.error.message);
+      const t2=d2.candidates?.[0]?.content?.parts?.[0]?.text;
+      if(t2) return t2; throw new Error("Sin respuesta");
+    }catch(e2){throw new Error("No se pudo conectar con la IA. Revisa tu clave o conexión a internet.");}
+  }
+}
+
+
+/* ══════════════════════════════════════════
+   SISTEMA DE DOCUMENTOS — Motor completo
+   Cada documento: id, título, secciones con campos
+   Tipo de campo: text | textarea | table | scale | select | list
+══════════════════════════════════════════ */
+
+const DOCS_DEF = {
+
+/* ─── M1 DOC 1: Para qué existimos ─── */
+"m1_d1": {
+  id:"m1_d1", moduleId:"m1",
+  title:"¿Para qué existimos?",
+  subtitle:"Define el propósito, la misión y la visión de tu empresa",
+  icon:"🧭",
+  example: {
+    "proposito":"Bodega Los Andes existe para acercar los mejores vinos de la región a personas que valoran la autenticidad y el trabajo artesanal, apoyando a productores locales que de otro modo no tendrían visibilidad.",
+    "mision":"Seleccionar, distribuir y comunicar vinos de pequeños productores del Valle del Maule, con un servicio cercano y honesto que genere confianza en cada cliente.",
+    "vision":"En 5 años, ser la distribuidora de referencia de vinos artesanales en la Región del Maule, con presencia en 3 regiones y una comunidad activa de más de 5.000 amantes del vino.",
+    "valores_list":"Autenticidad · Honestidad · Apoyo al productor local · Conocimiento del producto · Servicio personalizado",
+    "diferenciador":"A diferencia de las distribuidoras masivas, nosotros conocemos a cada productor personalmente y podemos contar su historia. No vendemos etiquetas, vendemos personas.",
+    "cliente_breve":"Personas de 35 a 60 años con interés en gastronomía, que buscan vinos con historia y están dispuestas a pagar un poco más por algo auténtico.",
+    "problema_resuelve":"Las personas que quieren descubrir vinos artesanales no saben dónde buscarlos ni cómo elegirlos. Nosotros los guiamos.",
+    "cuando_exito":"Cuando un productor local nos dice que gracias a nosotros pudo invertir en su siguiente cosecha, y cuando un cliente nos llama para pedir el vino que le recomendamos el año pasado."
+  },
+  sections:[
+    { id:"s1", title:"El propósito",
+      desc:"El propósito es la razón de fondo por la que existe la empresa — más allá de ganar dinero. Responde a la pregunta: ¿para qué hacemos lo que hacemos?",
+      fields:[
+        { id:"proposito", label:"¿Para qué existe esta empresa?", type:"textarea", placeholder:"Describe en 2 o 3 oraciones la razón de fondo por la que existe tu empresa. Piensa en el impacto que quieres tener en las personas o en el mundo.", rows:4 }
+      ]},
+    { id:"s2", title:"La misión",
+      desc:"La misión describe lo que haces concretamente hoy: qué ofreces, a quién y cómo lo haces.",
+      fields:[
+        { id:"mision", label:"¿Qué hace tu empresa hoy, para quién y cómo?", type:"textarea", placeholder:"Ej: Ayudamos a pequeñas empresas del rubro X a resolver el problema Y, a través de Z.", rows:3 }
+      ]},
+    { id:"s3", title:"La visión",
+      desc:"La visión es la imagen del futuro que quieres construir. Debe ser inspiradora, ambiciosa pero alcanzable.",
+      fields:[
+        { id:"vision", label:"¿Cómo quieres que sea tu empresa en 5 años?", type:"textarea", placeholder:"Describe el futuro que quieres construir. Sé específico: ¿dónde estarás?, ¿cuántos clientes?, ¿en qué mercados?", rows:3 }
+      ]},
+    { id:"s4", title:"Los valores",
+      desc:"Los valores son los principios que guían cómo trabaja la empresa — cómo trata a sus clientes, a su equipo y al entorno.",
+      fields:[
+        { id:"valores_list", label:"¿Cuáles son los 4 o 5 valores más importantes de tu empresa?", type:"textarea", placeholder:"Escribe cada valor y una frase que explique qué significa para ustedes.\nEj: Honestidad — decimos siempre la verdad aunque sea difícil.", rows:4 }
+      ]},
+    { id:"s5", title:"Lo que nos hace únicos",
+      fields:[
+        { id:"diferenciador", label:"¿Qué tiene tu empresa que no tiene ninguna otra?", type:"textarea", placeholder:"¿Por qué un cliente debería elegirte a ti y no a la competencia? Sé concreto, no uses frases genéricas.", rows:3 },
+        { id:"cliente_breve", label:"¿A quién le sirves principalmente?", type:"textarea", placeholder:"Describe brevemente al cliente que mejor encaja con lo que ofreces.", rows:2 },
+        { id:"problema_resuelve", label:"¿Qué problema concreto resuelves?", type:"textarea", placeholder:"El problema que resuelves, en una sola oración simple.", rows:2 }
+      ]},
+    { id:"s6", title:"¿Cuándo sabremos que lo logramos?",
+      fields:[
+        { id:"cuando_exito", label:"¿Cómo se ve el éxito para esta empresa?", type:"textarea", placeholder:"Describe 1 o 2 situaciones concretas que, si ocurren, significarían que están cumpliendo su propósito.", rows:3 }
+      ]}
+  ]
+},
+
+/* ─── M1 DOC 2: Cómo funciona nuestro negocio ─── */
+"m1_d2": {
+  id:"m1_d2", moduleId:"m1",
+  title:"Cómo funciona nuestro negocio",
+  subtitle:"Mapa simple de tu modelo de negocio",
+  icon:"🗺️",
+  example: {
+    "que_ofrecemos":"Distribución y venta de vinos artesanales de pequeños productores del Valle del Maule. Incluye selección curada, entrega a domicilio y asesoría personalizada.",
+    "clientes_segmentos":"1. Consumidores finales (35-60 años, interesados en gastronomía)\n2. Restaurantes y bares gourmet en Santiago y Talca\n3. Tiendas de especialidad (delicatessen, vinotecas)",
+    "como_llega":"- Canal digital: Instagram y web con tienda online\n- Canal directo: visitas a restaurantes y eventos de cata\n- Canal boca a boca: programa de referidos entre clientes actuales",
+    "por_que_pagan":"Pagan por la selección curada (no tienen que buscar), por la historia detrás de cada vino, por la confianza en la recomendación y por la comodidad del despacho.",
+    "ingresos_fuentes":"- Venta directa de vinos (70% del ingreso)\n- Suscripción mensual 'Caja del mes' (20%)\n- Eventos de cata privados para empresas (10%)",
+    "costos_principales":"- Compra de vinos a productores (55%)\n- Logística y despacho (15%)\n- Marketing digital (10%)\n- Arriendo bodega (8%)\n- Equipo (12%)",
+    "socios_clave":"- 12 productores del Valle del Maule con acuerdo de exclusividad parcial\n- Empresa de logística last-mile para despachos en Santiago\n- Sommelier consultor para catas y contenido",
+    "ventaja_sostenible":"Relación personal con los productores, lo que nos da acceso a vinos que nadie más puede ofrecer y una historia auténtica que contar en cada botella."
+  },
+  sections:[
+    { id:"s1", title:"¿Qué ofreces?",
+      desc:"Describe de forma simple qué es lo que vende o entrega tu empresa.",
+      fields:[
+        { id:"que_ofrecemos", label:"¿Qué producto o servicio ofreces?", type:"textarea", placeholder:"Describe qué vendes o entregas. Sé concreto — evita el lenguaje de marketing.", rows:3 }
+      ]},
+    { id:"s2", title:"¿A quién le vendes?",
+      fields:[
+        { id:"clientes_segmentos", label:"¿Quiénes son tus clientes? (pueden ser uno o varios grupos)", type:"textarea", placeholder:"Describe cada grupo de clientes. Ej:\n1. Empresas medianas del sector X\n2. Personas naturales que necesitan Y", rows:4 }
+      ]},
+    { id:"s3", title:"¿Cómo llegas a tus clientes?",
+      fields:[
+        { id:"como_llega", label:"¿Cómo te encuentran o cómo los buscas tú?", type:"textarea", placeholder:"Lista los canales que usas: web, redes sociales, vendedores, referidos, eventos, etc.", rows:3 }
+      ]},
+    { id:"s4", title:"¿Por qué te pagan?",
+      fields:[
+        { id:"por_que_pagan", label:"¿Qué valor recibe el cliente que justifica que te pague?", type:"textarea", placeholder:"¿Qué problema les resuelves o qué beneficio les das? ¿Por qué prefieren pagarte a ti y no hacer lo mismo solos?", rows:3 }
+      ]},
+    { id:"s5", title:"¿Cómo ganas dinero?",
+      fields:[
+        { id:"ingresos_fuentes", label:"¿De dónde vienen tus ingresos?", type:"textarea", placeholder:"Lista todas las formas en que entra dinero a la empresa.\nEj: venta de productos, suscripciones, servicios, comisiones...", rows:3 }
+      ]},
+    { id:"s6", title:"¿Cuáles son tus costos principales?",
+      fields:[
+        { id:"costos_principales", label:"¿En qué gastas para operar?", type:"textarea", placeholder:"Lista los 5 o 6 costos más importantes. Si puedes, indica qué porcentaje representa cada uno.", rows:3 }
+      ]},
+    { id:"s7", title:"¿Con quién trabajas para operar?",
+      fields:[
+        { id:"socios_clave", label:"¿Quiénes son los proveedores o socios sin los cuales no podrías operar?", type:"textarea", placeholder:"Menciona a los actores externos clave: proveedores, distribuidores, aliados, plataformas, etc.", rows:3 }
+      ]},
+    { id:"s8", title:"¿Qué te hace difícil de copiar?",
+      fields:[
+        { id:"ventaja_sostenible", label:"¿Qué tiene tu empresa que sería muy difícil de replicar para un competidor?", type:"textarea", placeholder:"Puede ser una relación, un conocimiento, una tecnología, una marca, una comunidad, etc.", rows:3 }
+      ]}
+  ]
+},
+
+/* ─── M2 DOC 1: Perfil del cliente ideal ─── */
+"m2_d1": {
+  id:"m2_d1", moduleId:"m2",
+  title:"Perfil del cliente ideal",
+  subtitle:"Describe con detalle a la persona o empresa a quien mejor le sirves",
+  icon:"👤",
+  example: {
+    "nombre_perfil":"El Gastronómico Curioso",
+    "descripcion_general":"Hombre o mujer de 38 a 55 años, profesional con ingresos medios-altos, que disfruta de la gastronomía y considera el vino parte de su estilo de vida. Vive en Santiago (Providencia, Las Condes, Ñuñoa) o en ciudades de regiones con cultura gastronómica.",
+    "que_necesita":"Descubrir vinos que sorprendan a sus invitados, que tengan una historia que contar y que no los encuentre en el supermercado. No quiere pasar horas eligiendo — confía en la recomendación de alguien que sabe.",
+    "que_le_preocupa":"Comprar un vino caro que resulte malo. No saber explicarle a sus invitados por qué eligió ese vino. Sentirse ignorante frente al tema.",
+    "como_decide":"Busca recomendaciones en Instagram, pregunta a amigos, lee reseñas cortas. Toma la decisión rápido si hay confianza en quien recomienda. El precio no es la primera variable, pero no puede ser absurdo.",
+    "donde_lo_encontramos":"Instagram (busca #vinoschile, sigue cuentas de gastronomía), eventos de cata, ferias de productores, recomendación de amigos.",
+    "frase_tipica":"'Quiero un vino que sea especial, que tenga historia, que no sea lo mismo de siempre. No entiendo mucho, pero sé lo que me gusta.'",
+    "cuando_no_es_cliente":"Cuando busca precio bajo sobre todo lo demás, o cuando ya tiene un proveedor habitual con el que está satisfecho y no está abierto a probar algo nuevo."
+  },
+  sections:[
+    { id:"s1", title:"¿Quién es tu cliente ideal?",
+      desc:"Ponle nombre a este perfil — no tiene que ser un nombre real, pero ayuda a que sea concreto.",
+      fields:[
+        { id:"nombre_perfil", label:"¿Cómo llamarías a este tipo de cliente?", type:"text", placeholder:"Ej: El Emprendedor Desbordado, La Dueña de Negocio Familiar, El Gerente de Empresa Mediana" },
+        { id:"descripcion_general", label:"Descríbelo: ¿quién es?, ¿dónde vive?, ¿qué hace?", type:"textarea", placeholder:"Edad aproximada, ocupación, dónde vive, cómo es su vida cotidiana. Sé concreto.", rows:4 }
+      ]},
+    { id:"s2", title:"¿Qué necesita y qué le preocupa?",
+      fields:[
+        { id:"que_necesita", label:"¿Qué problema tiene que tú puedes resolver?", type:"textarea", placeholder:"¿Qué quiere lograr?, ¿qué le frustra hoy?, ¿qué resultado busca?", rows:3 },
+        { id:"que_le_preocupa", label:"¿Qué miedos o dudas tiene antes de comprarte?", type:"textarea", placeholder:"¿De qué tiene miedo?, ¿qué le impediría comprarte?, ¿qué objeciones tiene?", rows:3 }
+      ]},
+    { id:"s3", title:"¿Cómo decide y dónde te encuentra?",
+      fields:[
+        { id:"como_decide", label:"¿Cómo toma la decisión de compra?", type:"textarea", placeholder:"¿Qué lo convence?, ¿cuánto tiempo tarda en decidir?, ¿compara opciones?, ¿le importa el precio?", rows:3 },
+        { id:"donde_lo_encontramos", label:"¿Dónde podemos encontrarlo o cómo nos puede encontrar?", type:"textarea", placeholder:"¿Qué redes usa?, ¿a qué eventos va?, ¿qué lee?, ¿quién lo influye?", rows:3 }
+      ]},
+    { id:"s4", title:"¿Cómo habla?",
+      fields:[
+        { id:"frase_tipica", label:"¿Qué diría este cliente sobre su problema, en sus propias palabras?", type:"textarea", placeholder:"Escribe una frase o párrafo como si él o ella te lo estuviera contando en persona.", rows:3 }
+      ]},
+    { id:"s5", title:"¿Cuándo NO es tu cliente?",
+      fields:[
+        { id:"cuando_no_es_cliente", label:"¿Qué señales indican que esta persona no es tu cliente ideal?", type:"textarea", placeholder:"Describe las situaciones o características que indican que esta persona no encaja con tu oferta.", rows:3 }
+      ]}
+  ]
+},
+
+/* ─── M2 DOC 2: Qué siente y qué necesita ─── */
+"m2_d2": {
+  id:"m2_d2", moduleId:"m2",
+  title:"Qué siente y qué necesita mi cliente",
+  subtitle:"Mapa de empatía para entender al cliente desde adentro",
+  icon:"💬",
+  example: {
+    "que_ve":"Ve publicaciones en Instagram de experiencias gastronómicas, cenas de cata, maridajes creativos. Ve que sus amigos van a eventos de vino. Ve que hay mucha oferta pero no sabe distinguir lo bueno de lo genérico.",
+    "que_escucha":"Escucha recomendaciones de amigos en reuniones sociales. Escucha a sommeliers en restaurantes. Escucha en podcasts de gastronomía. Escucha comentarios como 'hay que apoyar a los productores chicos'.",
+    "que_piensa":"Piensa que le gustaría entender más de vino pero no tiene tiempo para aprender. Piensa que le da vergüenza pedir consejo en una tienda. Le importa quedar bien con sus invitados.",
+    "que_hace":"Busca en Instagram antes de comprar. Pregunta a amigos de confianza. Compra en el supermercado por comodidad aunque sabe que podría encontrar algo mejor. A veces se arriesga con una botella desconocida.",
+    "dolores":"No saber si lo que compra es realmente bueno. Sentirse perdido frente a tanta oferta. Haber comprado vinos caros que resultaron decepcionantes. No tener a quién consultar de forma confiable.",
+    "ganancias":"Sorprender a sus invitados con algo que no conocían. Sentirse conocedor sin haber estudiado. Tener una historia que contar con cada botella. Apoyar a alguien local con su compra.",
+    "propuesta_ajuste":"Nos dirigimos a personas que quieren vivir una experiencia auténtica alrededor del vino, sin tener que ser expertos. Ofrecemos selección curada + historia + confianza, eliminando la angustia de la elección."
+  },
+  sections:[
+    { id:"s1", title:"¿Qué ve tu cliente?",
+      desc:"Su entorno, lo que observa en su vida diaria, lo que ven sus amigos y colegas.",
+      fields:[{ id:"que_ve", label:"¿Qué ve tu cliente en su entorno relacionado con el problema que tú resuelves?", type:"textarea", placeholder:"¿Qué ve en redes sociales, en su trabajo, en su barrio, con sus amigos?", rows:3 }]},
+    { id:"s2", title:"¿Qué escucha?",
+      fields:[{ id:"que_escucha", label:"¿Qué influencias recibe?, ¿qué le dicen las personas cercanas?", type:"textarea", placeholder:"¿Qué le dicen sus amigos, su familia, sus colegas? ¿Qué escucha en medios o podcasts?", rows:3 }]},
+    { id:"s3", title:"¿Qué piensa y siente?",
+      fields:[{ id:"que_piensa", label:"¿Qué le importa de verdad?, ¿qué le preocupa aunque no lo diga?", type:"textarea", placeholder:"Sus pensamientos más profundos sobre este tema. Lo que no diría en voz alta pero siente.", rows:3 }]},
+    { id:"s4", title:"¿Qué hace y dice?",
+      fields:[{ id:"que_hace", label:"¿Qué hace hoy para resolver el problema? ¿Cómo actúa?", type:"textarea", placeholder:"Sus comportamientos concretos: qué busca, qué compra, cómo decide, qué dice a otros.", rows:3 }]},
+    { id:"s5", title:"Sus dolores y sus ganancias",
+      fields:[
+        { id:"dolores", label:"¿Qué le duele, qué le frustra, qué le da miedo?", type:"textarea", placeholder:"Sus miedos, frustraciones, obstáculos y riesgos que quiere evitar.", rows:3 },
+        { id:"ganancias", label:"¿Qué gana, qué quiere lograr, qué lo haría feliz?", type:"textarea", placeholder:"Sus aspiraciones, lo que considera éxito, lo que lo haría sentir bien.", rows:3 }
+      ]},
+    { id:"s6", title:"¿Cómo ajustamos nuestra oferta?",
+      fields:[{ id:"propuesta_ajuste", label:"Con todo esto en mente, ¿cómo describes tu propuesta de valor?", type:"textarea", placeholder:"En 2 o 3 oraciones: para quién es, qué problema resuelve y por qué es diferente.", rows:3 }]}
+  ]
+},
+
+/* ─── M3 DOC 1: Cómo operamos hoy ─── */
+"m3_d1": {
+  id:"m3_d1", moduleId:"m3",
+  title:"Cómo operamos hoy",
+  subtitle:"Mapa de los procesos principales de tu empresa",
+  icon:"⚙️",
+  example: {
+    "proceso_venta":"1. Cliente nos contacta por Instagram DM o web\n2. Le enviamos catálogo con 15-20 vinos disponibles\n3. Cliente elige y confirma pedido por WhatsApp\n4. Emitimos boleta manual y confirmamos pago\n5. Coordinamos despacho con empresa externa\n6. Seguimiento post-entrega a los 2 días",
+    "proceso_compra":"1. Visita mensual a productores (1 día en el Maule)\n2. Cata y selección de vinos de nueva temporada\n3. Negociación de precio y volumen\n4. Despacho del productor a nuestra bodega en Talca\n5. Revisión de calidad e inventario",
+    "proceso_marketing":"1. Publicación en Instagram 3 veces por semana (historias de productores)\n2. Newsletter mensual con novedades\n3. Evento de cata privada una vez al mes en Santiago",
+    "persona_clave":"Ana (dueña): hace todo. Selecciona vinos, responde clientes, coordina despachos, publica en redes. Pedro (ayudante part-time): empaca y coordina logística los fines de semana.",
+    "cuello_botella":"El proceso de cotización y venta demora mucho porque todo es manual por WhatsApp. A veces los clientes esperan 24 horas una respuesta. También perdemos ventas cuando no hay stock de un vino popular.",
+    "lo_que_funciona":"La relación personal con los productores. El contenido de Instagram que genera confianza. Las catas privadas que convierten muy bien.",
+    "herramientas_hoy":"Instagram, WhatsApp Business, Google Sheets para inventario, boletas en papel, Google Drive para fotos.",
+    "tiempo_proceso":"Desde que un cliente pregunta hasta que recibe su vino: 3 a 5 días en promedio. La meta sería 1 a 2 días."
+  },
+  sections:[
+    { id:"s1", title:"¿Cómo vendes?",
+      desc:"Describe paso a paso qué pasa desde que un cliente te contacta hasta que paga y recibe.",
+      fields:[{ id:"proceso_venta", label:"Proceso de venta y entrega (paso a paso)", type:"textarea", placeholder:"Escribe los pasos en orden. Ej:\n1. El cliente nos contacta por...\n2. Nosotros respondemos...\n3. El cliente paga...\n4. Nosotros hacemos...", rows:5 }]},
+    { id:"s2", title:"¿Cómo compras o produces?",
+      fields:[{ id:"proceso_compra", label:"Proceso de compra de insumos o producción de tu servicio", type:"textarea", placeholder:"¿Cómo consigues lo que necesitas para operar? Paso a paso.", rows:4 }]},
+    { id:"s3", title:"¿Cómo consigues clientes nuevos?",
+      fields:[{ id:"proceso_marketing", label:"¿Qué haces concretamente para atraer clientes?", type:"textarea", placeholder:"Lista las acciones de marketing o ventas que haces regularmente.", rows:3 }]},
+    { id:"s4", title:"¿Quién hace qué?",
+      fields:[{ id:"persona_clave", label:"¿Qué hace cada persona del equipo en estos procesos?", type:"textarea", placeholder:"Nombre o rol de cada persona y qué tareas tiene a cargo.", rows:3 }]},
+    { id:"s5", title:"¿Dónde se atasa el proceso?",
+      fields:[
+        { id:"cuello_botella", label:"¿Cuáles son los puntos donde el proceso se traba, se demora o pierde calidad?", type:"textarea", placeholder:"Sé honesto: ¿qué se demora más de lo que debería?, ¿dónde hay errores frecuentes?, ¿qué frustran a los clientes?", rows:3 },
+        { id:"lo_que_funciona", label:"¿Qué partes del proceso funcionan especialmente bien?", type:"textarea", placeholder:"No todo está mal — identifica qué vale la pena conservar.", rows:2 }
+      ]},
+    { id:"s6", title:"¿Qué herramientas usan hoy?",
+      fields:[
+        { id:"herramientas_hoy", label:"¿Qué software, apps o herramientas usan para operar?", type:"textarea", placeholder:"Lista todo: WhatsApp, Excel, sistemas de facturación, redes sociales, etc.", rows:2 },
+        { id:"tiempo_proceso", label:"¿Cuánto tarda el proceso principal de punta a punta?", type:"text", placeholder:"Ej: desde que el cliente pide hasta que recibe: 3 a 5 días" }
+      ]}
+  ]
+},
+
+/* ─── M3 DOC 2: Indicadores de operación ─── */
+"m3_d2": {
+  id:"m3_d2", moduleId:"m3",
+  title:"Indicadores de operación",
+  subtitle:"Los números que te dicen si los procesos están funcionando bien",
+  icon:"📊",
+  example: {
+    "ind_ventas":"- Pedidos por semana: 12 promedio (meta: 20)\n- Tiempo de respuesta al cliente: 18 horas (meta: 2 horas)\n- Tasa de conversión cotización-venta: 60% (meta: 75%)",
+    "ind_calidad":"- Reclamos por despacho: 2 por mes (meta: 0)\n- Devoluciones: 1 por mes (meta: 0)\n- NPS clientes: 72 (meta: 80+)",
+    "ind_equipo":"- Horas semanales del equipo en tareas administrativas: 15 horas (meta: 5)\n- Tareas que dependen solo de Ana: 80% (meta: 40%)",
+    "ind_inventario":"- Quiebres de stock por mes: 3 vinos (meta: 0)\n- Rotación de inventario: 45 días promedio (meta: 30 días)",
+    "semaforo":"ROJO: tiempo de respuesta al cliente y dependencia en una persona\nAMARILLO: quiebres de stock y conversión de ventas\nVERDE: NPS y relación con productores",
+    "accion_prioritaria":"Implementar catálogo digital con stock en tiempo real y sistema de pedidos sin necesidad de WhatsApp manual. Esto resolvería el tiempo de respuesta y liberaría 10 horas semanales de Ana."
+  },
+  sections:[
+    { id:"s1", title:"Indicadores de ventas y atención",
+      desc:"Mide qué tan bien funciona el proceso de venta y qué tan rápido y bien atiendes a los clientes.",
+      fields:[{ id:"ind_ventas", label:"¿Cómo está tu proceso de ventas en números?", type:"textarea", placeholder:"Escribe los indicadores que tienes o los que quisieras tener:\n- Pedidos por semana/mes: \n- Tiempo de respuesta al cliente: \n- % de cotizaciones que se convierten en venta:", rows:4 }]},
+    { id:"s2", title:"Indicadores de calidad",
+      fields:[{ id:"ind_calidad", label:"¿Cómo mides si el producto o servicio está llegando bien?", type:"textarea", placeholder:"- Reclamos por mes:\n- Devoluciones:\n- Satisfacción del cliente (nota promedio):", rows:4 }]},
+    { id:"s3", title:"Indicadores del equipo",
+      fields:[{ id:"ind_equipo", label:"¿Cómo mides la eficiencia de las personas?", type:"textarea", placeholder:"- Horas en tareas que podrían automatizarse:\n- % de tareas que dependen de una sola persona:", rows:3 }]},
+    { id:"s4", title:"Indicadores de inventario o capacidad",
+      fields:[{ id:"ind_inventario", label:"¿Cómo controlas el stock o la capacidad de entrega?", type:"textarea", placeholder:"- Veces por mes que te quedas sin stock o capacidad:\n- Tiempo promedio de entrega:\n- % de pedidos entregados a tiempo:", rows:3 }]},
+    { id:"s5", title:"El semáforo de hoy",
+      fields:[
+        { id:"semaforo", label:"¿Qué está en rojo, amarillo y verde?", type:"textarea", placeholder:"ROJO (urgente, hay que actuar ya):\nAMARILLO (hay que mejorar, no es urgente):\nVERDE (funciona bien, hay que mantener):", rows:5 },
+        { id:"accion_prioritaria", label:"Si solo pudieras mejorar UNA cosa esta semana, ¿cuál sería?", type:"textarea", placeholder:"Describe la acción más importante y por qué.", rows:3 }
+      ]}
+  ]
+},
+
+/* ─── M4 DOC 1: Estado financiero simple ─── */
+"m4_d1": {
+  id:"m4_d1", moduleId:"m4",
+  title:"Estado financiero simple",
+  subtitle:"Un resumen claro de cómo está la plata en tu negocio",
+  icon:"💰",
+  example: {
+    "ingresos_mes":"Venta directa vinos: $2.800.000\nSuscripción 'Caja del mes' (28 clientes × $35.000): $980.000\nCatas privadas (2 eventos): $400.000\nTOTAL INGRESOS: $4.180.000",
+    "costos_variables":"Compra de vinos: $1.540.000 (37% del ingreso)\nLogística y despacho: $420.000 (10%)\nMateriales catas: $80.000\nTOTAL VARIABLE: $2.040.000",
+    "costos_fijos":"Arriendo bodega: $250.000\nSueldo Pedro (part-time): $320.000\nMarketing digital: $180.000\nContabilidad: $80.000\nOtros fijos: $70.000\nTOTAL FIJO: $900.000",
+    "resultado_mes":"INGRESOS: $4.180.000\nCOSTOS VARIABLES: $2.040.000\nMARGEN BRUTO: $2.140.000 (51%)\nCOSTOS FIJOS: $900.000\nRESULTADO OPERACIONAL: $1.240.000\nRetiro dueña (Ana): $900.000\nRESULTADO NETO: $340.000",
+    "caja_actual":"Caja disponible hoy: $1.800.000\nCuentas por cobrar (pendientes de pago): $480.000\nDeudas pendientes: $0\nRESERVA DISPONIBLE: $1.800.000 (aprox. 2 meses de costos fijos)",
+    "punto_equilibrio":"Para cubrir todos los costos fijos ($900.000) necesitamos vender al menos $1.765.000 al mes (con margen del 51%). Hoy estamos por encima.",
+    "alerta_financiera":"El mes de julio fue el más bajo ($2.900.000 en ingresos) por la baja estacional. Si eso se repite, tenemos reserva para 2 meses. Hay que generar ingresos más estables (más suscripciones)."
+  },
+  sections:[
+    { id:"s1", title:"¿Cuánto entra?",
+      desc:"Lista todos los ingresos del mes pasado (o el promedio de los últimos 3 meses).",
+      fields:[{ id:"ingresos_mes", label:"Ingresos del mes — por fuente", type:"textarea", placeholder:"Escribe cada fuente de ingreso con su monto:\nFuente 1: $\nFuente 2: $\nTOTAL INGRESOS: $", rows:5 }]},
+    { id:"s2", title:"¿Cuánto sale? — Costos variables",
+      desc:"Los costos que cambian según cuánto vendes (más ventas = más costo).",
+      fields:[{ id:"costos_variables", label:"Costos que varían con las ventas", type:"textarea", placeholder:"Ej: materia prima, comisiones, logística por pedido, etc.\nConcepto 1: $\nConcepto 2: $\nTOTAL VARIABLE: $", rows:5 }]},
+    { id:"s3", title:"¿Cuánto sale? — Costos fijos",
+      desc:"Los costos que pagas siempre, aunque no vendas nada.",
+      fields:[{ id:"costos_fijos", label:"Costos que pagas siempre", type:"textarea", placeholder:"Ej: arriendo, sueldos, servicios básicos, suscripciones.\nConcepto 1: $\nConcepto 2: $\nTOTAL FIJO: $", rows:5 }]},
+    { id:"s4", title:"¿Cuál es el resultado?",
+      fields:[{ id:"resultado_mes", label:"Resumen del mes", type:"textarea", placeholder:"INGRESOS: $\nCOSTOS VARIABLES: $\nMARGEN BRUTO: $ (%)\nCOSTOS FIJOS: $\nRESULTADO OPERACIONAL: $\nRetiro dueño/sueldo: $\nRESULTADO NETO: $", rows:7 }]},
+    { id:"s5", title:"¿Cómo está la caja?",
+      fields:[{ id:"caja_actual", label:"¿Cuánto dinero tienes disponible hoy?", type:"textarea", placeholder:"Caja disponible: $\nCuentas por cobrar: $\nDeudas pendientes: $\n¿Para cuántos meses alcanza?:", rows:4 }]},
+    { id:"s6", title:"¿Cuánto necesitas vender para no perder plata?",
+      fields:[
+        { id:"punto_equilibrio", label:"Punto de equilibrio — el mínimo que necesitas vender cada mes", type:"textarea", placeholder:"Calcula cuánto debes vender para cubrir todos tus costos fijos. Fórmula simple:\nPunto equilibrio = Costos fijos / Margen bruto %", rows:3 },
+        { id:"alerta_financiera", label:"¿Hay algo que te preocupa de las finanzas hoy?", type:"textarea", placeholder:"¿Algún mes malo en el horizonte? ¿Una deuda que vence? ¿Un cliente que no ha pagado?", rows:3 }
+      ]}
+  ]
+},
+
+/* ─── M4 DOC 2: Proyección de caja ─── */
+"m4_d2": {
+  id:"m4_d2", moduleId:"m4",
+  title:"Proyección de caja 12 meses",
+  subtitle:"Anticipar cuánto dinero tendrás mes a mes para tomar decisiones a tiempo",
+  icon:"📈",
+  example: {
+    "supuestos":"- Las ventas crecen 8% mensual por incorporación de nuevos suscriptores\n- Los costos variables se mantienen en 49% de los ingresos\n- Los costos fijos crecen solo en julio (+$150.000 por feria)\n- Julio y agosto son meses bajos (baja estacional -20%)\n- Se planifica inversión en marketing digital de $500.000 en octubre",
+    "proyeccion_ingresos":"Mes 1 (Sep): $4.180.000\nMes 2 (Oct): $4.514.000\nMes 3 (Nov): $4.875.000\nMes 4 (Dic): $5.264.000 (peak navidad)\nMes 5 (Ene): $4.000.000 (baja enero)\nMes 6 (Feb): $4.320.000",
+    "proyeccion_costos":"Sep: $2.940.000 | Oct: $3.176.000 | Nov: $3.430.000\nDic: $3.704.000 | Ene: $2.820.000 | Feb: $3.046.000",
+    "caja_proyectada":"Sep: $1.800.000 → $2.040.000\nOct: $2.040.000 → $2.378.000\nNov: $2.378.000 → $2.823.000\nDic: $2.823.000 → $4.383.000\nEne: $4.383.000 → $5.563.000\nFeb: $5.563.000 → $6.837.000",
+    "mes_critico":"No hay un mes crítico en la proyección. El punto más bajo es enero con $4.000.000 de ingresos, pero la caja acumulada de diciembre más que cubre los costos.",
+    "plan_contingencia":"Si los ingresos caen más del 30% en algún mes: pausar el gasto en marketing digital y activar promociones especiales para la base de suscriptores.",
+    "inversion_planificada":"Octubre: $500.000 en pauta digital para aumentar suscriptores de 28 a 45.\nMarzo: $300.000 en nueva góndola para vinos premium."
+  },
+  sections:[
+    { id:"s1", title:"Los supuestos de la proyección",
+      desc:"Antes de proyectar, tienes que definir qué vas a asumir. Estos supuestos son hipótesis — deben ser realistas.",
+      fields:[{ id:"supuestos", label:"¿Qué supones que va a pasar en los próximos 12 meses?", type:"textarea", placeholder:"Escribe los supuestos principales:\n- Las ventas van a crecer/caer X% porque...\n- Los costos van a cambiar porque...\n- Hay meses estacionales buenos/malos:\n- Hay inversiones o gastos extraordinarios planificados:", rows:6 }]},
+    { id:"s2", title:"Proyección de ingresos",
+      fields:[{ id:"proyeccion_ingresos", label:"¿Cuánto esperas ingresar cada mes?", type:"textarea", placeholder:"Mes 1:\nMes 2:\nMes 3:\nMes 4:\nMes 5:\nMes 6:\nMes 7:\nMes 8:\nMes 9:\nMes 10:\nMes 11:\nMes 12:", rows:8 }]},
+    { id:"s3", title:"Proyección de costos",
+      fields:[{ id:"proyeccion_costos", label:"¿Cuánto esperas gastar cada mes?", type:"textarea", placeholder:"Mes 1:\nMes 2:\nMes 3:\n... (incluye fijos + variables estimados)", rows:6 }]},
+    { id:"s4", title:"¿Cómo queda la caja?",
+      fields:[{ id:"caja_proyectada", label:"Caja al inicio y al final de cada mes", type:"textarea", placeholder:"Mes 1: inicio $ → fin $\nMes 2: inicio $ → fin $\n...", rows:6 }]},
+    { id:"s5", title:"Alertas y planes",
+      fields:[
+        { id:"mes_critico", label:"¿Hay algún mes donde la caja podría quedar muy ajustada?", type:"textarea", placeholder:"¿Cuándo es el punto más bajo? ¿Alcanza para cubrir los costos?", rows:3 },
+        { id:"plan_contingencia", label:"Si las cosas van peor de lo esperado, ¿qué harías?", type:"textarea", placeholder:"Plan B: ¿qué gastos cortarías primero?, ¿a quién podrías pedirle plazo?, ¿qué acción rápida generaría ingresos?", rows:3 },
+        { id:"inversion_planificada", label:"¿Qué inversiones tienes planificadas este año?", type:"textarea", placeholder:"Describe cada inversión con su monto y el mes aproximado.", rows:3 }
+      ]}
+  ]
+},
+
+/* ─── M5 DOC 1: Roles y responsabilidades ─── */
+"m5_d1": {
+  id:"m5_d1", moduleId:"m5",
+  title:"Roles y responsabilidades del equipo",
+  subtitle:"Quién hace qué en tu empresa — por escrito y sin ambigüedad",
+  icon:"👥",
+  example: {
+    "estructura_actual":"Somos 3 personas:\n- Ana (dueña): dirección, compras, marketing, atención a clientes VIP\n- Pedro (part-time, fines de semana): logística, empaque, despachos\n- María (freelance, 2 días/semana): diseño y contenido Instagram",
+    "rol_1_nombre":"Ana Rodríguez — Directora y Fundadora",
+    "rol_1_responsabilidades":"- Seleccionar los vinos de temporada con los productores\n- Gestionar relaciones con los 12 productores del Maule\n- Responder consultas y cerrar ventas con clientes principales\n- Publicar en Instagram (historias y reels)\n- Revisar finanzas mensualmente\n- Coordinar eventos de cata",
+    "rol_1_decisions":"Puede decidir: qué vinos incorporar, precios, descuentos hasta 15%, contrataciones.\nDebe consultar antes de: inversiones sobre $500.000, cambios de proveedor logístico.",
+    "rol_2_nombre":"Pedro Soto — Encargado de Logística",
+    "rol_2_responsabilidades":"- Recibir y revisar pedidos de vinos de productores\n- Mantener inventario actualizado en planilla\n- Empacar pedidos según especificaciones\n- Coordinar retiros y despachos con empresa logística\n- Reportar quiebres de stock a Ana",
+    "brechas_equipo":"Falta alguien que atienda clientes de lunes a viernes en horario completo. Ana lleva demasiadas tareas críticas — si ella se enferma, el negocio se paraliza. No hay nadie dedicado a ventas activas.",
+    "proximo_cargo":"El próximo cargo que necesitamos es un Ejecutivo Comercial part-time que atienda clientes, gestione pedidos y haga prospección activa de nuevos clientes B2B (restaurantes)."
+  },
+  sections:[
+    { id:"s1", title:"¿Cómo está el equipo hoy?",
+      fields:[{ id:"estructura_actual", label:"Describe a todas las personas que trabajan en la empresa", type:"textarea", placeholder:"Incluye dueños, empleados, part-time y freelancers.\nNombre o rol: qué hace / cuántas horas trabaja", rows:4 }]},
+    { id:"s2", title:"Rol 1",
+      fields:[
+        { id:"rol_1_nombre", label:"Nombre y cargo", type:"text", placeholder:"Ej: Juan Pérez — Gerente Comercial" },
+        { id:"rol_1_responsabilidades", label:"¿Qué hace esta persona? (tareas concretas)", type:"textarea", placeholder:"Lista las responsabilidades principales — lo que se espera de esta persona semana a semana.", rows:4 },
+        { id:"rol_1_decisions", label:"¿Qué puede decidir solo y qué debe consultar?", type:"textarea", placeholder:"Puede decidir solo:\nDebe consultar antes de:", rows:3 }
+      ]},
+    { id:"s3", title:"Rol 2",
+      fields:[
+        { id:"rol_2_nombre", label:"Nombre y cargo", type:"text", placeholder:"Ej: María López — Encargada de Operaciones" },
+        { id:"rol_2_responsabilidades", label:"¿Qué hace esta persona?", type:"textarea", placeholder:"Lista las responsabilidades principales.", rows:4 }
+      ]},
+    { id:"s4", title:"Rol 3 (si aplica)",
+      fields:[
+        { id:"rol_3_nombre", label:"Nombre y cargo", type:"text", placeholder:"Ej: Pedro Soto — Encargado de Logística" },
+        { id:"rol_3_responsabilidades", label:"¿Qué hace esta persona?", type:"textarea", placeholder:"Lista las responsabilidades principales.", rows:3 }
+      ]},
+    { id:"s5", title:"¿Qué falta?",
+      fields:[
+        { id:"brechas_equipo", label:"¿Qué capacidades le faltan al equipo hoy?", type:"textarea", placeholder:"¿Hay tareas que nadie hace bien?, ¿hay demasiada carga en una persona?, ¿qué habilidades necesitan urgente?", rows:3 },
+        { id:"proximo_cargo", label:"Si pudieras contratar a alguien mañana, ¿qué cargo y para qué?", type:"textarea", placeholder:"Describe el perfil que más necesitan y qué problema resolvería.", rows:3 }
+      ]}
+  ]
+},
+
+/* ─── M5 DOC 2: Encuesta de clima laboral ─── */
+"m5_d2": {
+  id:"m5_d2", moduleId:"m5",
+  title:"Encuesta de clima laboral",
+  subtitle:"Entender cómo se siente el equipo para tomar mejores decisiones",
+  icon:"🌡️",
+  example: {
+    "nota_general":"7 sobre 10. El equipo está comprometido pero hay señales de agotamiento en Ana por la concentración de tareas.",
+    "lo_bueno":"- El equipo confía mucho en Ana y en la dirección de la empresa\n- Hay orgullo por el producto y la relación con los productores\n- Buen ambiente entre las 3 personas\n- Flexibilidad de horarios valorada por Pedro y María",
+    "lo_mejorable":"- Ana siente que lleva demasiado peso sola\n- Pedro no siempre sabe cuáles son las prioridades de la semana\n- María (freelance) se siente un poco fuera del loop de las decisiones\n- No hay reuniones regulares de equipo",
+    "comunicacion":"La comunicación es mayoritariamente por WhatsApp y de forma reactiva. No hay reuniones semanales formales. Las instrucciones a veces son verbales y no quedan documentadas.",
+    "motivacion":"Alta en los 3 casos cuando hay eventos de cata o cuando llegan pedidos grandes. Baja cuando hay problemas logísticos repetitivos o cuando hay mucho trabajo administrativo manual.",
+    "acciones_clima":"1. Instaurar reunión semanal de 30 minutos los lunes (todos)\n2. Crear canal de WhatsApp separado para temas operativos vs. personales\n3. Documentar las tareas semanales de Pedro en una lista simple\n4. Incluir a María en la reunión mensual de revisión"
+  },
+  sections:[
+    { id:"s1", title:"Nota general",
+      fields:[{ id:"nota_general", label:"Si el clima del equipo fuera una nota del 1 al 10, ¿cuál sería y por qué?", type:"textarea", placeholder:"Nota: X/10\nPor qué: ...", rows:3 }]},
+    { id:"s2", title:"¿Qué está funcionando bien?",
+      fields:[{ id:"lo_bueno", label:"¿Qué valora el equipo? ¿Qué genera orgullo o motivación?", type:"textarea", placeholder:"Lista las cosas positivas del ambiente de trabajo.", rows:4 }]},
+    { id:"s3", title:"¿Qué se puede mejorar?",
+      fields:[{ id:"lo_mejorable", label:"¿Qué genera frustración, confusión o desmotivación?", type:"textarea", placeholder:"Sé honesto — esto es para mejorar, no para juzgar.", rows:4 }]},
+    { id:"s4", title:"¿Cómo funciona la comunicación?",
+      fields:[{ id:"comunicacion", label:"¿Cómo se comunica el equipo hoy? ¿Funciona bien?", type:"textarea", placeholder:"¿Hay reuniones regulares?, ¿cómo se dan las instrucciones?, ¿hay malentendidos frecuentes?", rows:3 }]},
+    { id:"s5", title:"¿Qué motiva y qué desmotiva?",
+      fields:[{ id:"motivacion", label:"¿Cuándo está el equipo más energizado y cuándo más apagado?", type:"textarea", placeholder:"Describe situaciones concretas que generan energía o que drenan al equipo.", rows:3 }]},
+    { id:"s6", title:"Acciones para mejorar",
+      fields:[{ id:"acciones_clima", label:"¿Qué 3 o 4 acciones concretas mejorarían el clima del equipo?", type:"textarea", placeholder:"1. \n2. \n3. \n4. ", rows:4 }]}
+  ]
+},
+
+/* ─── M6 DOC 1: ¿Estamos listos para crecer? ─── */
+"m6_d1": {
+  id:"m6_d1", moduleId:"m6",
+  title:"¿Estamos listos para crecer?",
+  subtitle:"Revisión honesta de si la empresa está preparada para escalar",
+  icon:"🚀",
+  example: {
+    "producto_validado":"Sí. Tenemos 28 suscriptores activos con 8 meses de antigüedad promedio, NPS de 72 y crecimiento orgánico por referidos. El producto tiene market-fit.",
+    "margen_suficiente":"Sí. Margen bruto del 51% y resultado operacional positivo. Podemos crecer sin sacrificar rentabilidad si los costos variables se mantienen estables.",
+    "equipo_listo":"Parcialmente. Ana está al límite de su capacidad actual. Para crecer necesitamos contratar un ejecutivo comercial antes de aumentar el volumen de ventas.",
+    "procesos_listos":"No del todo. El proceso de ventas sigue siendo manual por WhatsApp. Para crecer hay que implementar tienda online con catálogo y sistema de pedidos automático.",
+    "capacidad_escala":"Podemos crecer hasta 50 pedidos semanales sin cambiar la logística. Después de eso necesitamos bodega más grande o acuerdo con fulfillment externo.",
+    "score_readiness":"7/10 — Producto y finanzas listas. Equipo y procesos necesitan ajuste antes de acelerar.",
+    "que_falta_antes":"1. Contratar ejecutivo comercial part-time\n2. Implementar tienda online (4-6 semanas)\n3. Establecer protocolo de atención al cliente sin depender de Ana\n4. Con eso en su lugar: lanzar campaña de crecimiento"
+  },
+  sections:[
+    { id:"s1", title:"¿El producto o servicio está validado?",
+      desc:"Validado significa que ya tienes clientes que pagan, repiten y recomiendan.",
+      fields:[{ id:"producto_validado", label:"¿Tienes evidencia de que lo que ofreces resuelve un problema real?", type:"textarea", placeholder:"¿Cuántos clientes tienes? ¿Cuántos repiten? ¿Te recomiendan? ¿Qué dice tu NPS?", rows:3 }]},
+    { id:"s2", title:"¿Los márgenes son suficientes para crecer?",
+      fields:[{ id:"margen_suficiente", label:"¿Al crecer, ganarías más o perderías plata?", type:"textarea", placeholder:"¿Cuál es tu margen bruto hoy? Si vendes el doble, ¿cuánto más ganas?", rows:3 }]},
+    { id:"s3", title:"¿El equipo está listo?",
+      fields:[{ id:"equipo_listo", label:"¿El equipo puede manejar el doble de trabajo?", type:"textarea", placeholder:"¿Hay capacidad ociosa o están al límite? ¿Qué cargo necesitarías primero?", rows:3 }]},
+    { id:"s4", title:"¿Los procesos están listos?",
+      fields:[{ id:"procesos_listos", label:"¿Los procesos se aguantan si duplicas el volumen?", type:"textarea", placeholder:"¿Qué partes del proceso colapsarían primero? ¿Qué habría que automatizar antes?", rows:3 }]},
+    { id:"s5", title:"¿Cuál es tu capacidad real de escala?",
+      fields:[{ id:"capacidad_escala", label:"¿Hasta cuánto puedes crecer sin hacer cambios grandes?", type:"textarea", placeholder:"¿Cuántos clientes más puedes atender con lo que tienes hoy?", rows:2 }]},
+    { id:"s6", title:"El resumen",
+      fields:[
+        { id:"score_readiness", label:"Si la preparación para crecer fuera una nota del 1 al 10, ¿cuál sería?", type:"text", placeholder:"Nota X/10 — y una línea explicando por qué." },
+        { id:"que_falta_antes", label:"¿Qué hay que hacer antes de acelerar el crecimiento?", type:"textarea", placeholder:"Lista las 3 o 4 cosas que hay que resolver antes de pisar el acelerador.", rows:4 }
+      ]}
+  ]
+},
+
+/* ─── M6 DOC 2: Plan de crecimiento ─── */
+"m6_d2": {
+  id:"m6_d2", moduleId:"m6",
+  title:"Plan de crecimiento 18 meses",
+  subtitle:"Un plan concreto con metas, acciones y recursos para crecer de forma ordenada",
+  icon:"🗓️",
+  example: {
+    "meta_18m":"Para marzo del año siguiente: 80 suscriptores activos (hoy 28), 3 cuentas B2B estables (restaurantes), ingresos mensuales de $8.000.000 (hoy $4.180.000).",
+    "fase_1":"Meses 1-3: Consolidar la base\n- Contratar ejecutivo comercial part-time\n- Lanzar tienda online con 30 vinos disponibles\n- Establecer protocolo de atención al cliente\nMeta: 40 suscriptores, 1 cuenta B2B",
+    "fase_2":"Meses 4-9: Crecer en clientes\n- Campaña digital de adquisición ($500.000/mes en pauta)\n- Programa de referidos para suscriptores actuales\n- Visitas activas a 20 restaurantes en Santiago\nMeta: 60 suscriptores, 2 cuentas B2B",
+    "fase_3":"Meses 10-18: Escalar y consolidar\n- Ampliar catálogo a 50 vinos\n- Evaluar expansión a otras regiones\n- Considerar marca propia (colección ALAndes)\nMeta: 80 suscriptores, 3+ cuentas B2B",
+    "recursos_necesarios":"Personas: ejecutivo comercial ($400.000/mes part-time)\nTecnología: tienda online Shopify ($50.000 setup + $35.000/mes)\nMarketing: $500.000/mes en pauta digital desde mes 4\nCapital de trabajo: $1.500.000 para stock adicional",
+    "indicadores_seguimiento":"- Número de suscriptores activos (meta mensual)\n- Ingresos totales mensuales\n- Costo de adquisición de cliente (meta: < $15.000)\n- Tasa de retención de suscriptores (meta: > 85%)\n- NPS (meta: > 80)",
+    "riesgos":"1. Que un productor clave deje de trabajar con nosotros — mitigación: diversificar a 18 productores\n2. Que la competencia copie el modelo — mitigación: fortalecer exclusividades\n3. Que la ejecución recaiga solo en Ana — mitigación: contratar ejecutivo antes de mes 2"
+  },
+  sections:[
+    { id:"s1", title:"¿A dónde quieres llegar en 18 meses?",
+      fields:[{ id:"meta_18m", label:"Define la meta principal en números concretos", type:"textarea", placeholder:"¿Cuántos clientes?, ¿cuánto en ingresos?, ¿en qué mercados?, ¿con qué equipo?\nSé específico — 'crecer' no es una meta.", rows:3 }]},
+    { id:"s2", title:"Fase 1: Los primeros 3 meses",
+      desc:"¿Qué hay que consolidar antes de empezar a crecer?",
+      fields:[{ id:"fase_1", label:"Acciones, responsables y meta de fase 1", type:"textarea", placeholder:"Acciones concretas:\n-\n-\n-\nMeta al final de los 3 meses:", rows:5 }]},
+    { id:"s3", title:"Fase 2: Meses 4 al 9",
+      fields:[{ id:"fase_2", label:"Acciones, responsables y meta de fase 2", type:"textarea", placeholder:"Acciones concretas:\n-\n-\n-\nMeta al final de los 9 meses:", rows:5 }]},
+    { id:"s4", title:"Fase 3: Meses 10 al 18",
+      fields:[{ id:"fase_3", label:"Acciones, responsables y meta de fase 3", type:"textarea", placeholder:"Acciones concretas:\n-\n-\n-\nMeta al final de los 18 meses:", rows:5 }]},
+    { id:"s5", title:"¿Qué necesitas para ejecutar el plan?",
+      fields:[{ id:"recursos_necesarios", label:"Personas, tecnología, dinero y tiempo", type:"textarea", placeholder:"¿Cuántas personas necesitas contratar?, ¿qué herramientas?, ¿cuánta inversión?, ¿de dónde sale?", rows:4 }]},
+    { id:"s6", title:"¿Cómo mediremos el avance?",
+      fields:[{ id:"indicadores_seguimiento", label:"¿Qué indicadores revisarás mes a mes para saber si vas bien?", type:"textarea", placeholder:"Lista los 4 o 5 indicadores clave con su meta mensual.", rows:4 }]},
+    { id:"s7", title:"¿Cuáles son los riesgos del plan?",
+      fields:[{ id:"riesgos", label:"¿Qué podría salir mal y cómo lo mitigas?", type:"textarea", placeholder:"1. Riesgo: ... — Mitigación: ...\n2. Riesgo: ... — Mitigación: ...\n3. Riesgo: ... — Mitigación: ...", rows:4 }]}
+  ]
+}
+
+}; /* fin DOCS_DEF */
+
+/* ══════ MOTOR DE DOCUMENTOS ══════ */
+function useDocData(clientId, docId, updateClient){
+  const getVal = useCallback((fieldId) => {
+    return updateClient._clientRef?.docs?.[docId]?.[fieldId] || "";
+  }, [clientId, docId]);
+
+  const setVal = useCallback((fieldId, value) => {
+    updateClient(c => ({
+      ...c,
+      docs: { ...(c.docs||{}), [docId]: { ...(c.docs?.[docId]||{}), [fieldId]: value } }
+    }));
+  }, [docId, updateClient]);
+
+  return { getVal, setVal };
+}
+
+function DocModal({ docId, mode, client, updateClient, onClose, addToast }){
+  const def = DOCS_DEF[docId];
+  if(!def) return null;
+  const isExample = mode === "ejemplo";
+  const [localData, setLocalData] = useState(() => {
+    if(isExample) return def.example || {};
+    return client.docs?.[docId] || {};
+  });
+  const [saved, setSaved] = useState(false);
+
+  const getValue = (fieldId) => {
+    if(isExample) return def.example?.[fieldId] || "";
+    return localData[fieldId] || "";
+  };
+
+  const handleChange = (fieldId, value) => {
+    if(isExample) return;
+    setLocalData(p => ({ ...p, [fieldId]: value }));
+  };
+
+  const handleSave = () => {
+    updateClient(c => ({ ...c, docs: { ...(c.docs||{}), [docId]: localData } }));
+    setSaved(true);
+    addToast("Documento guardado", "success");
+    setTimeout(() => setSaved(false), 2000);
+  };
+
+  const handleExport = () => {
+    const lines = [`${def.title}\n${"=".repeat(def.title.length)}\n${def.subtitle}\n`];
+    def.sections.forEach(sec => {
+      lines.push(`\n${sec.title}`);
+      lines.push("-".repeat(sec.title.length));
+      sec.fields.forEach(field => {
+        const val = getValue(field.id);
+        lines.push(`\n${field.label}`);
+        lines.push(val || "(sin completar)");
+      });
+    });
+    const blob = new Blob([lines.join("\n")], {type:"text/plain;charset=utf-8"});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href=url; a.download=`${def.id}_${mode}.txt`; a.click();
+    URL.revokeObjectURL(url);
+    addToast("Documento exportado", "success");
+  };
+
+  const completedFields = def.sections.reduce((acc,sec) => {
+    sec.fields.forEach(f => { if(getValue(f.id)) acc++; });
+    return acc;
+  }, 0);
+  const totalFields = def.sections.reduce((acc,sec) => acc + sec.fields.length, 0);
+  const pct = Math.round(completedFields/totalFields*100);
+
+  return (
+    <div style={{position:"fixed",inset:0,background:"rgba(8,11,18,.9)",zIndex:2000,display:"flex",alignItems:"flex-start",justifyContent:"center",overflowY:"auto",padding:"24px 16px"}}>
+      <div style={{width:"100%",maxWidth:720,animation:"fadeIn .25s ease",position:"relative"}}>
+        {/* Header */}
+        <div style={{background:B.bg2,border:`0.5px solid ${B.border}`,borderRadius:"12px 12px 0 0",padding:"18px 20px",display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:12,position:"sticky",top:0,zIndex:10}}>
+          <div style={{display:"flex",alignItems:"center",gap:12}}>
+            <span style={{fontSize:24}}>{def.icon}</span>
+            <div>
+              <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:3}}>
+                <span style={{fontSize:15,fontWeight:600,color:B.text}}>{def.title}</span>
+                <span style={{fontSize:10,padding:"2px 8px",borderRadius:10,background:isExample?"rgba(255,152,0,.12)":"rgba(33,150,243,.12)",color:isExample?B.amber:B.blueLight,border:`0.5px solid ${isExample?"rgba(255,152,0,.3)":"rgba(33,150,243,.3)"}`,fontFamily:"DM Mono"}}>{isExample?"EJEMPLO":"PLANTILLA"}</span>
+              </div>
+              <div style={{fontSize:11,color:B.muted}}>{def.subtitle}</div>
+            </div>
+          </div>
+          <div style={{display:"flex",alignItems:"center",gap:8,flexShrink:0}}>
+            {!isExample&&<div style={{fontSize:10,fontFamily:"DM Mono",color:B.muted}}>{pct}% completado</div>}
+            {!isExample&&<button onClick={handleSave} style={{padding:"6px 14px",background:saved?B.green:B.blue,border:"none",borderRadius:6,color:"#fff",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit",transition:"background .2s"}}>{saved?"✓ Guardado":"Guardar"}</button>}
+            <button onClick={handleExport} style={{padding:"6px 12px",background:"transparent",border:`0.5px solid ${B.border}`,borderRadius:6,color:B.muted,fontSize:12,cursor:"pointer",fontFamily:"inherit"}}>Exportar</button>
+            <button onClick={onClose} style={{background:"none",border:"none",color:B.muted,cursor:"pointer",fontSize:20,lineHeight:1,padding:4}}>×</button>
+          </div>
+        </div>
+
+        {/* Barra de progreso */}
+        {!isExample&&(
+          <div style={{height:3,background:B.border,overflow:"hidden"}}>
+            <div style={{height:"100%",width:`${pct}%`,background:B.blue,transition:"width .4s"}}/>
+          </div>
+        )}
+
+        {/* Aviso ejemplo */}
+        {isExample&&(
+          <div style={{background:"rgba(255,152,0,.06)",border:`0.5px solid rgba(255,152,0,.2)`,borderLeft:`3px solid ${B.amber}`,padding:"10px 16px",fontSize:12,color:B.muted}}>
+            Este es un ejemplo con datos de <strong style={{color:B.text}}>Bodega Los Andes</strong> — una empresa ficticia del rubro vitivinícola. Úsalo como referencia para completar tu propia plantilla.
+          </div>
+        )}
+
+        {/* Secciones */}
+        <div style={{background:B.bg2,border:`0.5px solid ${B.border}`,borderTop:"none",borderRadius:"0 0 12px 12px",padding:"20px"}}>
+          {def.sections.map((sec, si) => (
+            <div key={sec.id} style={{marginBottom:24}}>
+              <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:sec.desc?6:12}}>
+                <div style={{width:22,height:22,borderRadius:"50%",background:"rgba(33,150,243,.15)",border:`0.5px solid rgba(33,150,243,.3)`,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+                  <span style={{fontSize:10,fontFamily:"DM Mono",color:B.blue,fontWeight:600}}>{si+1}</span>
+                </div>
+                <span style={{fontSize:13,fontWeight:600,color:B.text}}>{sec.title}</span>
+              </div>
+              {sec.desc&&<p style={{fontSize:12,color:B.muted,lineHeight:1.6,marginBottom:12,paddingLeft:32}}>{sec.desc}</p>}
+              {sec.fields.map(field => (
+                <div key={field.id} style={{marginBottom:14,paddingLeft:32}}>
+                  <div style={{fontSize:11,color:B.muted,marginBottom:6,letterSpacing:".3px"}}>{field.label}</div>
+                  {field.type==="textarea"
+                    ? <textarea
+                        value={getValue(field.id)}
+                        onChange={e=>handleChange(field.id,e.target.value)}
+                        onBlur={!isExample?handleSave:undefined}
+                        placeholder={isExample?"":field.placeholder}
+                        rows={field.rows||3}
+                        readOnly={isExample}
+                        style={{background:isExample?"rgba(255,152,0,.04)":B.bg3,border:`0.5px solid ${isExample?"rgba(255,152,0,.2)":B.border}`,color:isExample?B.muted:B.text,cursor:isExample?"default":"text"}}
+                      />
+                    : <input
+                        type="text"
+                        value={getValue(field.id)}
+                        onChange={e=>handleChange(field.id,e.target.value)}
+                        onBlur={!isExample?handleSave:undefined}
+                        placeholder={isExample?"":field.placeholder}
+                        readOnly={isExample}
+                        style={{background:isExample?"rgba(255,152,0,.04)":B.bg3,border:`0.5px solid ${isExample?"rgba(255,152,0,.2)":B.border}`,color:isExample?B.muted:B.text}}
+                      />
+                  }
+                </div>
+              ))}
+              {si < def.sections.length-1 && <div style={{height:"0.5px",background:B.border,marginTop:8,marginLeft:32}}/>}
+            </div>
+          ))}
+
+          {!isExample&&(
+            <div style={{display:"flex",gap:8,marginTop:8,paddingTop:16,borderTop:`0.5px solid ${B.border}`}}>
+              <button onClick={handleSave} style={{flex:1,padding:"10px 0",background:B.blue,border:"none",borderRadius:8,color:"#fff",fontSize:13,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>
+                {saved?"✓ Guardado":"Guardar documento"}
+              </button>
+              <button onClick={handleExport} style={{padding:"10px 16px",background:"transparent",border:`0.5px solid ${B.border}`,borderRadius:8,color:B.muted,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>Exportar .txt</button>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+const LogoMark=({size=30})=>(<svg width={size} height={size} viewBox="0 0 100 100"><rect width="100" height="100" rx="22" fill="#2196F3"/><circle cx="46" cy="56" r="24" fill="none" stroke="#fff" strokeWidth="10"/><line x1="70" y1="32" x2="70" y2="80" stroke="#fff" strokeWidth="10" strokeLinecap="round"/><circle cx="46" cy="56" r="6" fill="rgba(255,255,255,.85)"/><circle cx="70" cy="32" r="6" fill="rgba(255,255,255,.6)"/></svg>);
+const Eyebrow=({children,style={}})=>(<div style={{fontSize:10,letterSpacing:"2.5px",color:B.blue,textTransform:"uppercase",fontWeight:400,marginBottom:6,...style}}>{children}</div>);
+const Badge=({children,style={}})=>(<span style={{display:"inline-flex",alignItems:"center",background:"rgba(33,150,243,.1)",color:B.blueLight,border:"0.5px solid rgba(33,150,243,.3)",borderRadius:20,padding:"3px 12px",fontSize:10,letterSpacing:"1.5px",textTransform:"uppercase",...style}}>{children}</span>);
+
+function Toast({msg,type,onClose}){
+  useEffect(()=>{const t=setTimeout(onClose,3500);return()=>clearTimeout(t);},[]);
+  const col=type==="success"?B.green:type==="error"?B.red:B.blue;
+  return(<div style={{background:B.bg3,border:`0.5px solid ${col}`,borderLeft:`3px solid ${col}`,borderRadius:8,padding:"12px 16px",fontSize:13,color:B.text,display:"flex",alignItems:"center",gap:10,animation:"toastIn .3s ease",boxShadow:"0 8px 32px rgba(0,0,0,.4)",minWidth:260}}><div style={{width:7,height:7,borderRadius:"50%",background:col,flexShrink:0}}/>{msg}<div onClick={onClose} style={{marginLeft:"auto",cursor:"pointer",color:B.muted,fontSize:18,lineHeight:1}}>x</div></div>);
+}
+
+function AIPanel({loading,text}){
+  return(<div style={{background:"rgba(33,150,243,.05)",border:"0.5px solid rgba(33,150,243,.2)",borderLeft:`3px solid ${B.blue}`,borderRadius:"0 8px 8px 0",padding:"14px 16px",marginTop:12,animation:"fadeIn .3s ease"}}>
+    <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}>
+      <div style={{width:7,height:7,borderRadius:"50%",background:B.blue,animation:loading?"pulse 1s infinite":"none",flexShrink:0}}/>
+      <span style={{fontSize:10,fontFamily:"DM Mono",color:B.blueLight,textTransform:"uppercase",letterSpacing:"1.5px"}}>Análisis IA</span>
+    </div>
+    {loading?<div style={{display:"flex",gap:5,padding:"4px 0"}}>{[0,1,2].map(i=><span key={i} style={{width:6,height:6,borderRadius:"50%",background:B.blueLight,display:"inline-block",animation:`bounce 1.2s ${i*.2}s infinite`}}/>)}</div>
+    :<p style={{fontSize:13,color:B.muted,lineHeight:1.7,margin:0,whiteSpace:"pre-wrap"}}>{text}</p>}
+  </div>);
+}
+
+function HealthChart({history}){
+  const ref=useRef(null);const ch=useRef(null);
+  useEffect(()=>{
+    if(!ref.current)return;
+    if(ch.current)ch.current.destroy();
+    ch.current=new Chart(ref.current,{type:"line",data:{labels:history.map(h=>h.label),datasets:[
+      {label:"Empresa",data:history.map(h=>h.val),borderColor:B.blue,backgroundColor:"rgba(33,150,243,.08)",fill:true,tension:.4,pointRadius:4,pointBackgroundColor:B.blue,pointBorderColor:B.bg1,pointBorderWidth:2},
+      {label:"Promedio",data:history.map(()=>6.2),borderColor:B.border,borderDash:[4,4],fill:false,tension:0,pointRadius:0}
+    ]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{backgroundColor:B.bg3,borderColor:B.border,borderWidth:1,titleColor:B.text,bodyColor:B.muted}},scales:{x:{grid:{color:"rgba(30,45,74,.5)"},ticks:{color:B.muted,font:{size:10,family:"DM Mono"}}},y:{grid:{color:"rgba(30,45,74,.5)"},ticks:{color:B.muted,font:{size:10,family:"DM Mono"}},min:4,max:10}}}});
+    return()=>{if(ch.current)ch.current.destroy();};
+  },[JSON.stringify(history)]);
+  return <canvas ref={ref}/>;
+}
+
+function MiniChart({mod}){
+  const ref=useRef(null);const ch=useRef(null);
+  useEffect(()=>{
+    if(!ref.current)return;
+    if(ch.current)ch.current.destroy();
+    const data=[0,10,25,mod.progress,mod.progress>0?Math.min(100,mod.progress+5):null,null];
+    ch.current=new Chart(ref.current,{type:"line",data:{labels:["E1","E2","E3","E4","E5","E6"],datasets:[{data,borderColor:B.blue,backgroundColor:"rgba(33,150,243,.06)",fill:true,tension:.4,pointRadius:3,pointBackgroundColor:B.blue}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{grid:{color:"rgba(30,45,74,.4)"},ticks:{color:B.muted,font:{size:10,family:"DM Mono"}}},y:{grid:{color:"rgba(30,45,74,.4)"},ticks:{color:B.muted,font:{size:10,family:"DM Mono"}},min:0,max:100}}}});
+    return()=>{if(ch.current)ch.current.destroy();};
+  },[mod.id,mod.progress]);
+  return <canvas ref={ref}/>;
+}
+
+function RadarSVG({modules}){
+  const cx=100,cy=100,r=68,n=6;
+  const pts=modules.map((m,i)=>{const v=(m.progress||0)/100,a=(Math.PI*2*i/n)-Math.PI/2;return[cx+Math.cos(a)*r*v,cy+Math.sin(a)*r*v];});
+  const lbls=["M","E","S","A","P","C"];
+  return(<svg viewBox="0 0 200 200" style={{width:"100%",height:"100%"}}>
+    {[1,2,3,4].map(ring=>{const p=Array.from({length:n},(_,i)=>{const a=(Math.PI*2*i/n)-Math.PI/2;return`${cx+Math.cos(a)*r*ring/4},${cy+Math.sin(a)*r*ring/4}`;}).join(" ");return<polygon key={ring} points={p} fill="none" stroke={B.border} strokeWidth="1"/>;
+    })}
+    {Array.from({length:n},(_,i)=>{const a=(Math.PI*2*i/n)-Math.PI/2;return<line key={i} x1={cx} y1={cy} x2={cx+Math.cos(a)*r} y2={cy+Math.sin(a)*r} stroke={B.border} strokeWidth="1"/>;
+    })}
+    <polygon points={pts.map(p=>p.join(",")).join(" ")} fill="rgba(33,150,243,.14)" stroke={B.blue} strokeWidth="1.5"/>
+    {pts.map((p,i)=><circle key={i} cx={p[0]} cy={p[1]} r="3" fill={B.blue}/>)}
+    {lbls.map((l,i)=>{const a=(Math.PI*2*i/n)-Math.PI/2;return<text key={i} x={cx+Math.cos(a)*(r+16)} y={cy+Math.sin(a)*(r+16)} textAnchor="middle" dominantBaseline="middle" fontSize="9" fill={B.muted} fontFamily="DM Mono">{l}</text>;})}
+  </svg>);
+}
+
+function ClientSelector({clients,activeId,onSelect,onCreate,onDelete}){
+  const [showNew,setShowNew]=useState(Object.keys(clients).length===0);
+  const [form,setForm]=useState({nombre:"",sector:"",etapa:"",responsable:""});
+  const f=(k,v)=>setForm(p=>({...p,[k]:v}));
+  const list=Object.values(clients).sort((a,b)=>b.createdAt.localeCompare(a.createdAt));
+  const handleCreate=()=>{if(!form.nombre.trim())return;onCreate(form.nombre.trim(),form.sector,form.etapa,form.responsable);setForm({nombre:"",sector:"",etapa:"",responsable:""});setShowNew(false);};
+  const card={background:B.bg2,border:`0.5px solid ${B.border}`,borderRadius:8,padding:"14px 16px"};
+  const btn=(p)=>({padding:"8px 18px",borderRadius:6,fontSize:12,fontFamily:"inherit",fontWeight:600,cursor:"pointer",border:`0.5px solid ${p?B.blue:B.border}`,background:p?B.blue:"transparent",color:p?"#fff":B.muted});
+  return(<div style={{animation:"fadeIn .25s ease"}}>
+    <div style={{marginBottom:24}}>
+      <Eyebrow style={{marginBottom:6}}>ALTKimia · MESA</Eyebrow>
+      <h1 style={{fontSize:22,fontWeight:600,color:B.text,marginBottom:4}}>Mis empresas</h1>
+      <p style={{fontSize:13,color:B.muted}}>Selecciona una empresa para trabajar o crea una nueva</p>
+    </div>
+    {list.length>0&&(<div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(260px,1fr))",gap:10,marginBottom:20}}>
+      {list.map(c=>{
+        const prog=Math.round(c.modules.reduce((a,m)=>a+(m.progress||0),0)/c.modules.length);
+        const activos=c.gaas.filter(g=>g.active).length;
+        return(<div key={c.id} onClick={()=>onSelect(c.id)} style={{...card,cursor:"pointer",borderTop:`2px solid ${activeId===c.id?B.blue:B.border}`,transition:"all .15s",position:"relative"}}>
+          <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",marginBottom:10}}>
+            <div><div style={{fontSize:14,fontWeight:600,color:B.text,marginBottom:2}}>{c.nombre}</div><div style={{fontSize:11,color:B.muted}}>{c.sector||"—"} · {c.etapa||"—"}</div></div>
+            <button onClick={e=>{e.stopPropagation();if(confirm(`¿Eliminar a ${c.nombre}?`))onDelete(c.id);}} style={{background:"none",border:"none",cursor:"pointer",color:B.border,fontSize:16,lineHeight:1,padding:2}}>x</button>
+          </div>
+          <div style={{display:"flex",gap:12,fontSize:11,color:B.muted}}>
+            <span>Avance: <span style={{color:B.blue,fontFamily:"DM Mono",fontWeight:600}}>{prog}%</span></span>
+            <span>Servicios: <span style={{color:B.blue,fontFamily:"DM Mono",fontWeight:600}}>{activos}</span></span>
+          </div>
+          <div style={{height:3,background:B.border,borderRadius:2,marginTop:10,overflow:"hidden"}}><div style={{height:"100%",width:`${prog}%`,background:B.blue,borderRadius:2}}/></div>
+          <div style={{fontSize:10,color:B.border,fontFamily:"DM Mono",marginTop:6}}>{new Date(c.createdAt).toLocaleDateString("es-CL")}</div>
+        </div>);
+      })}
+    </div>)}
+    {showNew?(<div style={card}>
+      <Eyebrow style={{marginBottom:12}}>Nueva empresa</Eyebrow>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:10}}>
+        {[{k:"nombre",l:"Nombre *",p:"Ej: Bodega Los Andes"},{k:"sector",l:"Rubro",p:"Ej: Agrotech"},{k:"etapa",l:"Etapa",p:"Ej: PyME"},{k:"responsable",l:"Responsable",p:"Nombre del encargado"}].map(({k,l,p})=>(<div key={k}><div style={{fontSize:11,color:B.muted,marginBottom:5,textTransform:"uppercase",letterSpacing:"1px"}}>{l}</div><input type="text" value={form[k]} onChange={e=>f(k,e.target.value)} placeholder={p} onKeyDown={e=>e.key==="Enter"&&handleCreate()}/></div>))}
+      </div>
+      <div style={{display:"flex",gap:8,marginTop:4}}>
+        <button style={btn(true)} onClick={handleCreate}>Crear empresa</button>
+        {list.length>0&&<button style={btn(false)} onClick={()=>setShowNew(false)}>Cancelar</button>}
+      </div>
+    </div>):(<button style={{...btn(false),display:"flex",alignItems:"center",gap:8}} onClick={()=>setShowNew(true)}>+ Agregar empresa</button>)}
+  </div>);
+}
+
+
+function ResourcesTab({mod, client, updateClient, addToast}){
+  const [openDoc, setOpenDoc] = useState(null); // {docId, mode}
+
+  // Map module to doc ids
+  const moduleDocMap = {
+    m1:["m1_d1","m1_d2"], m2:["m2_d1","m2_d2"],
+    m3:["m3_d1","m3_d2"], m4:["m4_d1","m4_d2"],
+    m5:["m5_d1","m5_d2"], m6:["m6_d1","m6_d2"]
+  };
+  const docIds = moduleDocMap[mod.id] || [];
+  const card = {background:B.bg2,border:`0.5px solid ${B.border}`,borderRadius:8};
+
+  const getDocProgress = (docId) => {
+    const def = DOCS_DEF[docId];
+    if(!def) return 0;
+    const saved = client.docs?.[docId] || {};
+    const total = def.sections.reduce((a,s)=>a+s.fields.length,0);
+    const filled = def.sections.reduce((a,s)=>a+s.fields.filter(f=>saved[f.id]).length,0);
+    return total>0?Math.round(filled/total*100):0;
+  };
+
+  return(
+    <div>
+      {openDoc && (
+        <DocModal
+          docId={openDoc.docId}
+          mode={openDoc.mode}
+          client={client}
+          updateClient={updateClient}
+          onClose={()=>setOpenDoc(null)}
+          addToast={addToast}
+        />
+      )}
+
+      {/* Documentos */}
+      <Eyebrow style={{marginBottom:12}}>Documentos de la etapa</Eyebrow>
+      <div style={{display:"flex",flexDirection:"column",gap:10,marginBottom:24}}>
+        {docIds.map(docId => {
+          const def = DOCS_DEF[docId];
+          if(!def) return null;
+          const pct = getDocProgress(docId);
+          return(
+            <div key={docId} style={{...card,padding:0,overflow:"hidden"}}>
+              <div style={{padding:"14px 16px"}}>
+                <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:10}}>
+                  <span style={{fontSize:22,flexShrink:0}}>{def.icon}</span>
+                  <div style={{flex:1,minWidth:0}}>
+                    <div style={{fontSize:13,fontWeight:600,color:B.text,marginBottom:2}}>{def.title}</div>
+                    <div style={{fontSize:11,color:B.muted}}>{def.subtitle}</div>
+                  </div>
+                  <div style={{textAlign:"right",flexShrink:0}}>
+                    <div style={{fontSize:12,fontFamily:"DM Mono",color:pct===100?B.green:pct>0?B.blue:B.border,fontWeight:600}}>{pct}%</div>
+                    <div style={{fontSize:10,color:B.border}}>completado</div>
+                  </div>
+                </div>
+                {/* Progress bar */}
+                <div style={{height:3,background:B.border,borderRadius:2,marginBottom:12,overflow:"hidden"}}>
+                  <div style={{height:"100%",width:`${pct}%`,background:pct===100?B.green:B.blue,borderRadius:2,transition:"width .4s"}}/>
+                </div>
+                {/* Botones */}
+                <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+                  <button
+                    onClick={()=>setOpenDoc({docId,mode:"plantilla"})}
+                    style={{display:"flex",alignItems:"center",gap:6,padding:"7px 14px",background:B.blue,border:"none",borderRadius:6,color:"#fff",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}
+                  >
+                    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8" style={{width:11,height:11}}><rect x="2" y="2" width="12" height="12" rx="2"/><line x1="5" y1="6" x2="11" y2="6"/><line x1="5" y1="9" x2="9" y2="9"/></svg>
+                    {pct>0?"Continuar plantilla":"Abrir plantilla"}
+                  </button>
+                  <button
+                    onClick={()=>setOpenDoc({docId,mode:"ejemplo"})}
+                    style={{display:"flex",alignItems:"center",gap:6,padding:"7px 14px",background:"transparent",border:`0.5px solid ${B.border}`,borderRadius:6,color:B.muted,fontSize:12,cursor:"pointer",fontFamily:"inherit"}}
+                  >
+                    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8" style={{width:11,height:11}}><circle cx="8" cy="8" r="6"/><line x1="8" y1="5" x2="8" y2="8"/><circle cx="8" cy="11" r=".8" fill="currentColor"/></svg>
+                    Ver ejemplo
+                  </button>
+                  {pct>0&&(
+                    <span style={{fontSize:11,color:B.green,display:"flex",alignItems:"center",gap:4,marginLeft:4}}>
+                      <svg viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="2" style={{width:10,height:10}}><polyline points="1,7 5,10 11,2"/></svg>
+                      Guardado
+                    </span>
+                  )}
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Videos */}
+      <Eyebrow style={{marginBottom:10}}>Videos explicativos</Eyebrow>
+      <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:24}}>
+        {mod.resources.filter(r=>r.type==="video").map((r,i)=>(
+          <div key={i} style={{...card,padding:"12px 14px",display:"flex",alignItems:"center",gap:12,cursor:"pointer"}}>
+            <div style={{width:36,height:36,borderRadius:"50%",background:"rgba(33,150,243,.15)",display:"flex",alignItems:"center",justifyContent:"center",color:B.blue,flexShrink:0}}>
+              <svg viewBox="0 0 32 32" style={{width:16,height:16}} fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><circle cx="16" cy="16" r="13"/><polygon points="13,11 13,21 23,16" fill="currentColor" stroke="none" opacity=".8"/></svg>
+            </div>
+            <div style={{flex:1}}>
+              <div style={{fontSize:12,fontWeight:500,color:B.text,marginBottom:2}}>{r.name}</div>
+              {r.dur&&<div style={{fontSize:10,color:B.muted,fontFamily:"DM Mono"}}>{r.dur}</div>}
+            </div>
+            <span style={{fontSize:11,color:B.border,fontFamily:"DM Mono"}}>Próximamente</span>
+          </div>
+        ))}
+      </div>
+
+      {/* Evaluaciones */}
+      <Eyebrow style={{marginBottom:10}}>Evaluaciones</Eyebrow>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+        {mod.resources.filter(r=>r.type==="quiz").map((r,i)=>(
+          <div key={i} style={{...card,padding:"12px 14px",display:"flex",alignItems:"center",gap:10,cursor:"pointer"}}>
+            <div style={{width:32,height:32,background:"rgba(33,150,243,.1)",borderRadius:8,display:"flex",alignItems:"center",justifyContent:"center",color:B.blue,flexShrink:0}}>
+              <svg viewBox="0 0 32 32" style={{width:15,height:15}} fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><rect x="4" y="4" width="24" height="24" rx="3"/><line x1="10" y1="11" x2="22" y2="11"/><line x1="10" y1="16" x2="22" y2="16"/><line x1="10" y1="21" x2="16" y2="21"/></svg>
+            </div>
+            <div style={{fontSize:11,color:B.muted,lineHeight:1.4}}>{r.name}</div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function ModuleView({mod,client,updateClient,apiKey,addToast,isAdmin=false}){
+  const [tab,setTab]=useState("pasos");
+  const [quizSel,setQuizSel]=useState(mod.diagQuizSel!=null?mod.diagQuizSel:null);
+  const [scale,setScale]=useState(mod.diagScale||{});
+  const [comment,setComment]=useState(mod.diagComment||"");
+  const [ai,setAi]=useState(mod.lastAI?{show:true,loading:false,text:mod.lastAI}:{show:false,loading:false,text:""});
+  const [diag,setDiag]=useState(mod.lastDiag?{show:true,loading:false,text:mod.lastDiag}:{show:false,loading:false,text:""});
+  const gaasActivos=client.gaas.filter(g=>g.active&&(GAAS_MODULE_MAP[g.id]||[]).includes(mod.id));
+  const updateMod=(updates)=>{updateClient(c=>({...c,modules:c.modules.map(m=>m.id!==mod.id?m:{...m,...updates})}));};
+  const markDone=(idx)=>{
+    updateClient(c=>{
+      const modules=c.modules.map(m=>{
+        if(m.id!==mod.id)return m;
+        const steps=m.steps.map(s=>({...s}));
+        steps[idx]={...steps[idx],state:"done",doneAt:new Date().toISOString()};
+        if(steps[idx+1]&&steps[idx+1].state==="pending")steps[idx+1]={...steps[idx+1],state:"active"};
+        const done=steps.filter(s=>s.state==="done").length;
+        return{...m,steps,progress:Math.round(done/steps.length*100)};
+      });
+      const idx2=modules.findIndex(m=>m.id===mod.id);
+      if(modules[idx2].progress===100&&idx2+1<modules.length)modules[idx2+1]={...modules[idx2+1],unlocked:true};
+      const events=[...c.events,{date:new Date().toLocaleDateString("es-CL"),text:`${mod.phase} — paso completado`}].slice(-30);
+      return{...c,modules,events};
+    });
+    addToast("Paso completado","success");
+  };
+  const handleAI=async()=>{
+    setAi({show:true,loading:true,text:""});
+    const done=mod.steps.filter(s=>s.state==="done").map(s=>s.title).join(", ");
+    const svcs=gaasActivos.map(g=>g.name).join(", ");
+    const p=`Eres asesor de negocios de ALTKimia. Empresa: "${client.nombre}" (${client.sector||"sin rubro"}). Etapa: "${mod.name}". Avance: ${mod.progress||0}%. Pasos completados: ${done||"ninguno"}. Servicios activos: ${svcs||"ninguno"}. En lenguaje simple: 1) Cómo va el proceso (2 líneas). 2) Lo más importante a hacer ahora. 3) Qué pasa si no se hace. Máximo 100 palabras. Sin términos técnicos.`;
+    try{const t=await callAI(p,apiKey);setAi({show:true,loading:false,text:t});updateMod({lastAI:t,lastAIDate:new Date().toISOString()});addToast("Análisis guardado","success");}
+    catch(e){setAi({show:true,loading:false,text:e.message});addToast(e.message,"error");}
+  };
+  const handleDiag=async()=>{
+    setDiag({show:true,loading:true,text:""});
+    const matScore=quizSel!=null?quizSel+1:null;
+    const scaleStr=Object.entries(scale).map(([k,v])=>`pregunta ${parseInt(k)+1}: ${v}/5`).join(", ");
+    const p=`Asesor ALTKimia. Empresa: "${client.nombre}". Etapa: "${mod.name}". Respuesta diagnóstico: opción ${matScore||"sin responder"} de 4. Auto-evaluaciones: ${scaleStr||"ninguna"}. Comentarios: "${comment||"ninguno"}". En lenguaje simple: 1) Cómo está la empresa en esta etapa. 2) Las 2 cosas más urgentes. 3) Los 3 primeros pasos concretos esta semana. Máximo 130 palabras. Sin tecnicismos.`;
+    try{const t=await callAI(p,apiKey);setDiag({show:true,loading:false,text:t});updateMod({lastDiag:t,lastDiagDate:new Date().toISOString(),diagQuizSel:quizSel,diagScale:scale,diagComment:comment});addToast("Evaluación guardada","success");}
+    catch(e){setDiag({show:true,loading:false,text:e.message});addToast(e.message,"error");}
+  };
+  const saveComment=()=>{updateMod({diagComment:comment,diagQuizSel:quizSel,diagScale:scale});addToast("Guardado","success");};
+  const card={background:B.bg2,border:`0.5px solid ${B.border}`,borderRadius:8,padding:"14px 16px"};
+  const btn=(p)=>({padding:"8px 18px",borderRadius:6,fontSize:12,fontFamily:"inherit",fontWeight:600,cursor:"pointer",border:`0.5px solid ${p?B.blue:B.border}`,background:p?B.blue:"transparent",color:p?"#fff":B.muted});
+  const matLabels=["Recién comenzando","En desarrollo","Bien encaminado","Referente"];
+  const maturity=quizSel!=null?matLabels[quizSel]:null;
+  return(<div style={{animation:"fadeIn .25s ease"}}>
+    <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",marginBottom:20}}>
+      <div>
+        <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:6,flexWrap:"wrap"}}>
+          <Badge>{mod.phase}</Badge>
+          {(mod.progress||0)>0?<span style={{fontSize:10,padding:"2px 10px",borderRadius:10,background:"rgba(33,150,243,.1)",color:B.blueLight,border:"0.5px solid rgba(33,150,243,.25)",fontFamily:"DM Mono"}}>En curso</span>
+           :mod.unlocked?<span style={{fontSize:10,padding:"2px 10px",borderRadius:10,background:`rgba(30,45,74,.3)`,color:B.muted,fontFamily:"DM Mono"}}>Sin comenzar</span>
+           :<span style={{fontSize:10,padding:"2px 10px",borderRadius:10,background:"rgba(239,83,80,.1)",color:B.red,fontFamily:"DM Mono"}}>Bloqueada</span>}
+          {maturity&&<span style={{fontSize:10,padding:"2px 10px",borderRadius:10,background:"rgba(33,150,243,.08)",color:B.blueLight,border:"0.5px solid rgba(33,150,243,.2)",fontFamily:"DM Mono"}}>{maturity}</span>}
+          {gaasActivos.map(g=><span key={g.id} style={{fontSize:10,padding:"2px 8px",borderRadius:10,background:"rgba(76,175,80,.1)",color:B.green,border:"0.5px solid rgba(76,175,80,.25)"}}>{g.name}</span>)}
+        </div>
+        <h1 style={{fontSize:19,fontWeight:600,color:B.text,marginBottom:4}}>{mod.name}</h1>
+        <p style={{fontSize:13,color:B.muted}}>{mod.foco}</p>
+      </div>
+      <div style={{textAlign:"right",flexShrink:0}}>
+        <div style={{fontSize:28,fontWeight:700,color:B.blue,fontFamily:"DM Mono"}}>{mod.progress||0}%</div>
+        <div style={{fontSize:10,color:B.muted,textTransform:"uppercase",letterSpacing:"1px",fontFamily:"DM Mono"}}>completado</div>
+        <div style={{height:3,background:B.border,borderRadius:2,marginTop:6,width:80,overflow:"hidden"}}><div style={{height:"100%",width:`${mod.progress||0}%`,background:B.blue,borderRadius:2,transition:"width .5s"}}/></div>
+      </div>
+    </div>
+    {!mod.unlocked&&!isAdmin&&(<div style={{...card,textAlign:"center",padding:"2.5rem",border:"0.5px solid rgba(239,83,80,.2)"}}>
+      <div style={{fontSize:32,marginBottom:12}}>🔒</div>
+      <div style={{fontSize:15,fontWeight:500,color:B.text,marginBottom:8}}>Esta etapa está bloqueada</div>
+      <div style={{fontSize:13,color:B.muted,lineHeight:1.6}}>Para avanzar aquí primero tienes que completar la etapa anterior al 100%.<br/>El proceso MESA está diseñado para construirse paso a paso.</div>
+    </div>)}
+    {(mod.unlocked||isAdmin)&&(<>
+    <div style={{display:"flex",gap:0,background:B.bg3,padding:3,borderRadius:8,marginBottom:20,width:"fit-content",border:`0.5px solid ${B.border}`}}>
+      {[["pasos","Pasos"],["recursos","Materiales"],["diagnostico","Evaluación"],["dashboard","Resultados"]].map(([t,lbl])=>(<button key={t} onClick={()=>setTab(t)} style={{padding:"6px 16px",borderRadius:5,fontSize:12,cursor:"pointer",fontWeight:tab===t?500:400,color:tab===t?B.text:B.muted,background:tab===t?B.bg4:"transparent",border:"none",fontFamily:"inherit",transition:"all .15s"}}>{lbl}</button>))}
+    </div>
+    {gaasActivos.length>0&&tab==="pasos"&&(<div style={{display:"flex",alignItems:"center",gap:8,padding:"8px 12px",background:"rgba(76,175,80,.05)",border:"0.5px solid rgba(76,175,80,.2)",borderRadius:6,marginBottom:16,flexWrap:"wrap"}}>
+      <span style={{fontSize:11,color:B.green}}>Servicios activos en esta etapa:</span>
+      {gaasActivos.map(g=><span key={g.id} style={{fontSize:11,color:B.muted,background:B.bg3,padding:"2px 8px",borderRadius:4}}>{g.name}</span>)}
+    </div>)}
+    {tab==="pasos"&&(<div>
+      <div style={{background:"rgba(33,150,243,.04)",border:`0.5px solid ${B.border}`,borderLeft:`2px solid ${B.blue}`,borderRadius:"0 8px 8px 0",padding:"12px 16px",fontSize:13,color:B.muted,lineHeight:1.7,marginBottom:20}}>{mod.nota}</div>
+      {mod.steps.map((s,i)=>(<div key={s.id} style={{display:"flex",alignItems:"flex-start",gap:12,padding:"12px 14px",background:B.bg2,border:`0.5px solid ${s.state==="done"?"rgba(33,150,243,.3)":s.state==="active"?"rgba(33,150,243,.15)":B.border}`,borderRadius:8,marginBottom:8,transition:"all .15s"}}>
+        <div style={{width:26,height:26,borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,fontWeight:600,flexShrink:0,fontFamily:"DM Mono",background:s.state==="done"?"rgba(33,150,243,.2)":s.state==="active"?"rgba(33,150,243,.1)":B.bg3,color:s.state==="done"?B.blue:s.state==="active"?B.blueLight:B.muted,border:`0.5px solid ${s.state==="done"?B.blue:s.state==="active"?"rgba(33,150,243,.3)":B.border}`}}>
+          {s.state==="done"?<svg viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" style={{width:10,height:10}}><polyline points="1,7 5,10 11,2"/></svg>:`0${i+1}`}
+        </div>
+        <div style={{flex:1}}><div style={{fontSize:13,fontWeight:500,color:s.state==="pending"?B.muted:B.text,marginBottom:2}}>{s.title}</div><div style={{fontSize:11,color:B.border}}>{s.desc}</div>{s.doneAt&&<div style={{fontSize:10,color:B.border,fontFamily:"DM Mono",marginTop:3}}>Completado el {new Date(s.doneAt).toLocaleDateString("es-CL")}</div>}</div>
+        {s.state==="active"&&<button style={btn(true)} onClick={()=>markDone(i)}>Completar</button>}
+      </div>))}
+      <div style={{display:"flex",gap:8,marginTop:20}}><button style={btn(true)} onClick={handleAI}>Ver análisis IA</button><button style={btn(false)}>Exportar</button></div>
+      {ai.show&&<AIPanel loading={ai.loading} text={ai.text}/>}
+    </div>)}
+    {tab==="recursos"&&(<ResourcesTab mod={mod} client={client} updateClient={updateClient} addToast={addToast}/>)}
+    {tab==="diagnostico"&&(<div>
+      {mod.lastDiagDate&&(<div style={{display:"flex",alignItems:"center",gap:8,padding:"8px 12px",background:"rgba(33,150,243,.06)",border:"0.5px solid rgba(33,150,243,.2)",borderRadius:6,marginBottom:16,fontSize:12,color:B.muted}}><div style={{width:6,height:6,borderRadius:"50%",background:B.green,flexShrink:0}}/>Evaluación guardada · {new Date(mod.lastDiagDate).toLocaleDateString("es-CL")}{maturity&&<span style={{color:B.blueLight}}>· {maturity}</span>}</div>)}
+      <Eyebrow style={{marginBottom:10}}>Pregunta de evaluación</Eyebrow>
+      <div style={{...card,marginBottom:16}}>
+        <div style={{fontSize:14,fontWeight:500,lineHeight:1.6,color:B.text,marginBottom:14}}>{mod.quiz.q}</div>
+        {mod.quiz.opts.map((o,i)=>(<div key={i} onClick={()=>{setQuizSel(i);updateMod({diagQuizSel:i});}} style={{padding:"10px 14px",border:`0.5px solid ${quizSel===i?B.blue:B.border}`,borderRadius:6,cursor:"pointer",fontSize:13,color:quizSel===i?B.blueLight:B.muted,background:quizSel===i?"rgba(33,150,243,.08)":B.bg3,marginBottom:6,transition:"all .15s",display:"flex",alignItems:"center",gap:10}}>
+          <div style={{width:16,height:16,borderRadius:"50%",border:`1px solid ${quizSel===i?B.blue:B.muted}`,background:quizSel===i?B.blue:"transparent",flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center"}}>{quizSel===i&&<div style={{width:6,height:6,borderRadius:"50%",background:"#fff"}}/>}</div>
+          <span style={{flex:1}}>{o}</span><span style={{fontSize:10,fontFamily:"DM Mono",color:B.border}}>{i+1}/4</span>
+        </div>))}
+      </div>
+      <Eyebrow style={{marginBottom:10}}>¿Cómo lo ves tú? (1 = muy mal, 5 = muy bien)</Eyebrow>
+      {["Claridad sobre el foco del negocio","Capacidad del equipo para ejecutar","Acceso a información para decidir"].map((q,qi)=>(<div key={qi} style={{...card,marginBottom:8}}><div style={{fontSize:13,color:B.muted,marginBottom:10}}>{q}</div><div style={{display:"flex",gap:6}}>{[1,2,3,4,5].map(n=>(<button key={n} onClick={()=>{const ns={...scale,[qi]:n};setScale(ns);updateMod({diagScale:ns});}} style={{flex:1,height:32,borderRadius:6,border:`0.5px solid ${scale[qi]===n?B.blue:B.border}`,background:scale[qi]===n?B.blue:B.bg3,cursor:"pointer",fontSize:12,fontFamily:"DM Mono",color:scale[qi]===n?"#fff":B.muted,transition:"all .15s"}}>{n}</button>))}</div></div>))}
+      <div style={{marginTop:16,marginBottom:4}}><Eyebrow style={{marginBottom:8}}>Comentarios adicionales</Eyebrow><textarea value={comment} onChange={e=>setComment(e.target.value)} onBlur={saveComment} placeholder="Escribe aquí cualquier información importante sobre esta etapa..."/><div style={{fontSize:10,color:B.border,fontFamily:"DM Mono",marginTop:4}}>Se guarda automáticamente</div></div>
+      <div style={{display:"flex",gap:8,marginTop:12}}><button style={btn(true)} onClick={handleDiag}>Obtener recomendaciones IA</button><button style={btn(false)} onClick={saveComment}>Guardar</button></div>
+      {diag.show&&<AIPanel loading={diag.loading} text={diag.text}/>}
+    </div>)}
+    {tab==="dashboard"&&(<div>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:12,marginBottom:16}}>{mod.kpis.map((k,i)=>(<div key={i} style={card}><Eyebrow style={{marginBottom:8}}>{k.label}</Eyebrow><div style={{fontSize:26,fontWeight:700,fontFamily:"DM Mono",color:B.blue}}>{k.val>0?k.val:"—"}</div><div style={{height:3,background:B.border,borderRadius:2,marginTop:10,overflow:"hidden"}}><div style={{height:"100%",width:`${k.val}%`,background:`linear-gradient(90deg,${B.blueDark},${B.blue})`,borderRadius:2,transition:"width .8s"}}/></div></div>))}</div>
+      <div style={{...card,marginBottom:12}}><Eyebrow style={{marginBottom:10}}>Avance de esta etapa</Eyebrow><div style={{height:130}}><MiniChart mod={mod}/></div></div>
+      <div style={card}><Eyebrow style={{marginBottom:10}}>Antes y después del acompañamiento</Eyebrow>{mod.kpis.map((k,i)=>(<div key={i} style={{display:"flex",alignItems:"center",gap:12,padding:"8px 0",borderBottom:"0.5px solid rgba(30,45,74,.5)"}}><div style={{flex:1,fontSize:12,color:B.muted}}>{k.label}</div><div style={{display:"flex",gap:6,alignItems:"center"}}><span style={{fontSize:10,color:B.border,fontFamily:"DM Mono"}}>Antes</span><div style={{width:48,height:3,background:B.border,borderRadius:2}}><div style={{height:"100%",width:`${Math.max(5,k.val-18)}%`,background:B.border,borderRadius:2}}/></div><span style={{fontSize:10,color:B.border,fontFamily:"DM Mono"}}>Ahora</span><div style={{width:48,height:3,background:B.border,borderRadius:2}}><div style={{height:"100%",width:`${k.val}%`,background:B.blue,borderRadius:2}}/></div></div><div style={{fontSize:12,fontWeight:600,fontFamily:"DM Mono",color:B.blue,minWidth:40,textAlign:"right"}}>{k.val>0?`+${Math.round(k.val*.35)}%`:"—"}</div></div>))}</div>
+    </div>)}
+    </>)}
+  </div>);
+}
+
+function GaaSView({client,updateClient,apiKey,addToast}){
+  const [ai,setAi]=useState({show:true,loading:false,text:"Activa los servicios que tiene contratados esta empresa. Los servicios activos aparecerán vinculados en cada etapa del proceso."});
+  const gaas=client.gaas;
+  const setGaas=(fn)=>updateClient(c=>({...c,gaas:fn(c.gaas)}));
+  const toggle=(id)=>{setGaas(g=>g.map(x=>x.id===id?{...x,active:!x.active}:x));addToast("Servicio actualizado","success");};
+  const toggleInd=(gId,idx)=>setGaas(g=>g.map(x=>{if(x.id!==gId||!x.active)return x;const sel=x.indicators.filter(i=>i.sel).length;if(!x.indicators[idx].sel&&sel>=3){addToast("Máximo 3 indicadores por servicio","error");return x;}const indicators=x.indicators.map((ind,i)=>i===idx?{...ind,sel:!ind.sel}:ind);return{...x,indicators};}));
+  const handleAnalyze=async()=>{
+    setAi({show:true,loading:true,text:""});
+    const activos=gaas.filter(g=>g.active);
+    const desc=activos.map(g=>{const si=g.indicators.filter(i=>i.sel).map(i=>`${i.name}: ${i.val}`).join("; ");return`${g.name} (${si})`;}).join(" | ");
+    const p=`Asesor ALTKimia. Empresa: "${client.nombre}". Servicios contratados: ${desc||"ninguno"}. En lenguaje simple: ¿tiene sentido este mix de servicios?, ¿falta algo importante?, da 2 recomendaciones concretas. Máximo 100 palabras.`;
+    try{const t=await callAI(p,apiKey);setAi({show:true,loading:false,text:t});addToast("Análisis guardado","success");}
+    catch(e){setAi({show:true,loading:false,text:e.message});addToast(e.message,"error");}
+  };
+  const btn=(p)=>({padding:"8px 18px",borderRadius:6,fontSize:12,fontFamily:"inherit",fontWeight:600,cursor:"pointer",border:`0.5px solid ${p?B.blue:B.border}`,background:p?B.blue:"transparent",color:p?"#fff":B.muted});
+  const card={background:B.bg2,border:`0.5px solid ${B.border}`,borderRadius:8,padding:14};
+  const activos=gaas.filter(g=>g.active).length;
+  return(<div style={{animation:"fadeIn .25s ease"}}>
+    <div style={{marginBottom:24}}><Eyebrow style={{marginBottom:6}}>Servicios contratados</Eyebrow><h1 style={{fontSize:22,fontWeight:600,color:B.text,marginBottom:4}}>¿Qué servicios tiene esta empresa?</h1><p style={{fontSize:13,color:B.muted}}>{activos} servicio{activos!==1?"s":""} activo{activos!==1?"s":""} · Los servicios activos aparecen en cada etapa del proceso</p></div>
+    <div style={{display:"grid",gridTemplateColumns:"repeat(2,1fr)",gap:12,marginBottom:16}}>
+      {gaas.map(g=>(<div key={g.id} style={{...card,borderTop:`2px solid ${g.active?B.blue:B.border}`,opacity:g.active?1:.55,transition:"all .2s"}}>
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12}}>
+          <div><div style={{fontSize:13,fontWeight:500,color:g.active?B.text:B.muted}}>{g.name}</div>{g.active&&<div style={{fontSize:10,color:B.green,fontFamily:"DM Mono",marginTop:2}}>Activo en {(GAAS_MODULE_MAP[g.id]||[]).length} etapas</div>}</div>
+          <div onClick={()=>toggle(g.id)} style={{width:34,height:19,borderRadius:10,cursor:"pointer",background:g.active?B.blue:B.border,position:"relative",transition:"background .2s",flexShrink:0}}><div style={{width:13,height:13,borderRadius:"50%",background:"#fff",position:"absolute",top:3,left:g.active?18:3,transition:"left .2s"}}/></div>
+        </div>
+        {g.active&&g.indicators.map((ind,i)=>(<div key={i} onClick={()=>toggleInd(g.id,i)} title={ind.desc} style={{display:"flex",alignItems:"center",gap:8,padding:"7px 10px",background:ind.sel?"rgba(33,150,243,.08)":B.bg3,borderRadius:6,border:`0.5px solid ${ind.sel?"rgba(33,150,243,.35)":B.border}`,cursor:"pointer",marginBottom:5,transition:"all .15s"}}>
+          <div style={{flex:1,fontSize:11,color:B.muted,lineHeight:1.3}}>{ind.name}</div>
+          <div style={{fontSize:12,fontWeight:600,fontFamily:"DM Mono",color:ind.sel?B.blue:B.muted,margin:"0 6px"}}>{ind.val}</div>
+          <div style={{width:15,height:15,borderRadius:4,border:`1px solid ${ind.sel?B.blue:B.border}`,background:ind.sel?B.blue:"transparent",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>{ind.sel&&<svg viewBox="0 0 10 10" fill="none" stroke="#fff" strokeWidth="2" style={{width:8,height:8}}><polyline points="1,5 4,8 9,2"/></svg>}</div>
+        </div>))}
+        {g.active&&<div style={{fontSize:10,color:B.border,fontFamily:"DM Mono",marginTop:6}}>SELECCIONA LOS INDICADORES · MAX. 3</div>}
+      </div>))}
+    </div>
+    {ai.show&&<AIPanel loading={ai.loading} text={ai.text}/>}
+    <div style={{display:"flex",gap:8,marginTop:16}}><button style={btn(true)} onClick={handleAnalyze}>Analizar servicios con IA</button></div>
+  </div>);
+}
+
+function Dashboard({client,updateClient,onNav,apiKey,addToast}){
+  const modules=client.modules;const gaas=client.gaas;
+  const global=Math.round(modules.reduce((a,m)=>a+(m.progress||0),0)/modules.length);
+  const [ai,setAi]=useState({show:false,loading:false,text:""});
+  const card={background:B.bg2,border:`0.5px solid ${B.border}`,borderRadius:8,padding:"14px 16px"};
+  const handleGlobalAI=async()=>{
+    setAi({show:true,loading:true,text:""});
+    const progStr=modules.map(m=>`${m.phase}(${m.progress||0}%)`).join(", ");
+    const svcs=gaas.filter(g=>g.active).map(g=>g.name).join(", ");
+    const p=`Asesor ALTKimia. Empresa: "${client.nombre}" (${client.sector||""}). Avance: ${global}%. Etapas: ${progStr}. Servicios: ${svcs||"ninguno"}. En lenguaje simple: 1) Cómo va el proceso en general. 2) Lo más importante para avanzar. 3) El riesgo más importante a evitar. Máximo 120 palabras. Sin tecnicismos.`;
+    try{const t=await callAI(p,apiKey);setAi({show:true,loading:false,text:t});addToast("Análisis guardado","success");}
+    catch(e){setAi({show:true,loading:false,text:e.message});addToast(e.message,"error");}
+  };
+  const gaasActivos=gaas.filter(g=>g.active);
+  return(<div style={{animation:"fadeIn .25s ease"}}>
+    <div style={{marginBottom:24}}><Eyebrow style={{marginBottom:6}}>Resumen general</Eyebrow><h1 style={{fontSize:22,fontWeight:600,color:B.text,marginBottom:4}}>{client.nombre}</h1><p style={{fontSize:13,color:B.muted}}>{client.sector||"—"} · {client.etapa||"—"} · Responsable: {client.responsable||"—"}</p></div>
+    <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:12,marginBottom:16}}>
+      {[{ey:"Avance total",val:`${global}%`,d:"del proceso MESA",ok:true},{ey:"Etapas en curso",val:`${modules.filter(m=>(m.progress||0)>0&&(m.progress||0)<100).length}`,d:"de 6 etapas",ok:null},{ey:"Servicios activos",val:`${gaasActivos.length}`,d:"contratados",ok:null},{ey:"Salud del negocio",val:`${client.health[client.health.length-1]?.val||"—"}`,d:"mejorando",ok:true}].map((m,i)=>(<div key={i} style={card}><Eyebrow style={{marginBottom:8}}>{m.ey}</Eyebrow><div style={{fontSize:28,fontWeight:700,fontFamily:"DM Mono",color:B.blue,letterSpacing:"-1px"}}>{m.val}</div><div style={{fontSize:11,marginTop:4,color:m.ok===true?B.green:m.ok===false?B.red:B.muted}}>{m.d}</div></div>))}
+    </div>
+    <div style={{...card,marginBottom:12}}>
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12,flexWrap:"wrap",gap:8}}>
+        <Eyebrow>Cómo ha evolucionado el negocio</Eyebrow>
+        <div style={{display:"flex",gap:8,alignItems:"center"}}>
+          <div style={{display:"flex",gap:10,fontSize:11}}><span style={{display:"flex",alignItems:"center",gap:4,color:B.muted,fontFamily:"DM Mono"}}><span style={{width:10,height:2,background:B.blue,display:"inline-block",borderRadius:1}}/>Esta empresa</span><span style={{display:"flex",alignItems:"center",gap:4,color:B.muted,fontFamily:"DM Mono"}}><span style={{width:10,height:1,background:B.border,display:"inline-block"}}/>Promedio</span></div>
+          <button onClick={handleGlobalAI} style={{padding:"5px 12px",background:"transparent",border:"0.5px solid rgba(33,150,243,.3)",borderRadius:6,color:B.blueLight,fontSize:11,cursor:"pointer",fontFamily:"inherit"}}>Análisis IA</button>
+        </div>
+      </div>
+      <div style={{height:175}}><HealthChart history={client.health}/></div>
+    </div>
+    {ai.show&&<AIPanel loading={ai.loading} text={ai.text}/>}
+    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:12}}>
+      <div style={card}><Eyebrow style={{marginBottom:12}}>Avance por etapa</Eyebrow>
+        {modules.map(m=>(<div key={m.id} onClick={()=>onNav(m.id)} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 0",borderBottom:"0.5px solid rgba(30,45,74,.5)",cursor:"pointer"}}>
+          <div style={{fontSize:10,fontFamily:"DM Mono",color:B.blue,minWidth:28}}>{m.phase.slice(0,3).toUpperCase()}</div>
+          <div style={{flex:1,fontSize:12,color:B.muted,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{m.name}</div>
+          {!m.unlocked&&<span style={{fontSize:10}}>🔒</span>}
+          <div style={{width:60,height:3,background:B.border,borderRadius:2,flexShrink:0}}><div style={{height:"100%",width:`${m.progress||0}%`,background:B.blue,borderRadius:2}}/></div>
+          <div style={{fontSize:11,fontFamily:"DM Mono",color:B.blue,minWidth:32,textAlign:"right"}}>{m.progress||0}%</div>
+        </div>))}
+      </div>
+      <div style={card}><Eyebrow style={{marginBottom:6}}>Vista general del proceso</Eyebrow><div style={{height:185}}><RadarSVG modules={modules}/></div></div>
+    </div>
+    <div style={{...card,marginBottom:12}}><Eyebrow style={{marginBottom:12}}>Las 6 etapas del proceso</Eyebrow>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(6,1fr)",gap:6}}>
+        {modules.map((m,i)=>{const prog=m.progress||0;const col=prog===100?B.green:prog>0?B.blue:B.border;return(<div key={m.id} onClick={()=>onNav(m.id)} style={{textAlign:"center",padding:"10px 6px",background:B.bg3,borderRadius:8,border:`0.5px solid ${prog>0?B.border:"rgba(30,45,74,.4)"}`,cursor:"pointer",position:"relative"}}>
+          {i<5&&<div style={{position:"absolute",right:-9,top:"50%",transform:"translateY(-50%)",fontSize:10,color:B.border,zIndex:1}}>></div>}
+          <div style={{fontSize:16,fontWeight:700,color:col,fontFamily:"DM Mono",marginBottom:3}}>{m.letter}</div>
+          <div style={{fontSize:9,color:B.muted,marginBottom:3,lineHeight:1.2}}>{m.phase}</div>
+          <div style={{fontSize:10,fontFamily:"DM Mono",color:col}}>{prog}%</div>
+          {prog===100&&<div style={{position:"absolute",top:4,right:4,width:7,height:7,borderRadius:"50%",background:B.green}}/>}
+          {!m.unlocked&&prog<100&&<div style={{position:"absolute",top:4,right:4,fontSize:8}}>🔒</div>}
+        </div>);})}
+      </div>
+    </div>
+    {gaasActivos.length>0&&(<div style={{...card,marginBottom:12}}><Eyebrow style={{marginBottom:12}}>Servicios activos en el proceso</Eyebrow>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:8}}>
+        {gaasActivos.map(g=>{const inds=g.indicators.filter(i=>i.sel);return(<div key={g.id} style={{background:B.bg3,border:"0.5px solid rgba(76,175,80,.2)",borderRadius:8,padding:"12px"}}>
+          <div style={{fontSize:12,fontWeight:500,color:B.text,marginBottom:4}}>{g.name}</div>
+          <div style={{fontSize:10,color:B.green,marginBottom:8}}>Presente en {(GAAS_MODULE_MAP[g.id]||[]).length} etapas</div>
+          {inds.map((ind,i)=>(<div key={i} style={{display:"flex",justifyContent:"space-between",fontSize:11,color:B.muted,marginBottom:3}}><span style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",flex:1,marginRight:8}}>{ind.name}</span><span style={{fontFamily:"DM Mono",color:B.blue,fontWeight:600,flexShrink:0}}>{ind.val}</span></div>))}
+        </div>);
+        })}
+      </div>
+    </div>)}
+    <div style={card}><Eyebrow style={{marginBottom:12}}>Actividad reciente</Eyebrow>
+      <div style={{position:"relative",paddingLeft:20}}><div style={{position:"absolute",left:6,top:0,bottom:0,width:1,background:B.border}}/>
+        {(client.events||[]).slice(-6).reverse().map((t,i)=>(<div key={i} style={{position:"relative",paddingLeft:18,paddingBottom:12}}><div style={{position:"absolute",left:-14,top:4,width:8,height:8,borderRadius:"50%",background:B.blue,border:`2px solid ${B.bg1}`}}/><div style={{fontSize:10,fontFamily:"DM Mono",color:B.border,marginBottom:2}}>{t.date}</div><div style={{fontSize:12,color:B.muted}}>{t.text}</div></div>))}
+        {(!client.events||client.events.length===0)&&<div style={{fontSize:13,color:B.border,paddingLeft:18}}>Aún no hay actividad registrada</div>}
+      </div>
+    </div>
+    <div style={{background:"linear-gradient(135deg,rgba(21,101,192,.15),rgba(33,150,243,.08))",border:"0.5px solid rgba(33,150,243,.2)",borderRadius:8,padding:"16px 20px",display:"flex",alignItems:"center",justifyContent:"space-between",gap:16,marginTop:16,flexWrap:"wrap"}}>
+      <div><div style={{fontSize:14,fontWeight:600,color:B.text,marginBottom:3}}><span style={{color:B.blue}}>alt</span><span style={{color:B.text}}>kimia</span> — Gerencia como Servicio</div><div style={{fontSize:12,color:B.muted}}>Ordenar el negocio para que pueda crecer.</div></div>
+      <a href="https://calendly.com/antovillalobos69/30min" target="_blank" rel="noopener" style={{background:B.blue,color:"#fff",padding:"9px 20px",borderRadius:6,fontSize:12,fontWeight:600,textDecoration:"none",display:"inline-flex",alignItems:"center",gap:6,letterSpacing:".3px",flexShrink:0}}>Agendar sesion</a>
+    </div>
+  </div>);
+}
+
+function SettingsModal({apiKey,onSave,onClose}){
+  const [key,setKey]=useState(apiKey||"");
+  return(<div style={{position:"fixed",inset:0,background:"rgba(8,11,18,.85)",zIndex:1000,display:"flex",alignItems:"center",justifyContent:"center"}} onClick={e=>{if(e.target===e.currentTarget)onClose();}}>
+    <div style={{background:B.bg2,border:`0.5px solid ${B.border}`,borderRadius:12,padding:"2rem",width:400,maxWidth:"92vw",animation:"fadeIn .2s ease"}}>
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:20}}><div><Eyebrow>Ajustes</Eyebrow><h2 style={{fontSize:18,fontWeight:600,color:B.text}}>Clave de IA</h2></div><button onClick={onClose} style={{background:"none",border:"none",color:B.muted,cursor:"pointer",fontSize:20,lineHeight:1}}>x</button></div>
+      <p style={{fontSize:13,color:B.muted,marginBottom:16,lineHeight:1.6}}>Pega aquí tu clave de Google AI Studio (Gemini). Se guarda solo en este navegador.</p>
+      <div style={{marginBottom:4}}><div style={{fontSize:11,color:B.muted,marginBottom:5,textTransform:"uppercase",letterSpacing:"1px"}}>Clave de API (Gemini)</div><input type="password" value={key} onChange={e=>setKey(e.target.value)} placeholder="AIzaSy..."/></div>
+      <div style={{fontSize:11,color:B.border,fontFamily:"DM Mono",marginBottom:16}}>Obtena tu clave gratis en aistudio.google.com</div>
+      <div style={{display:"flex",gap:8}}><button onClick={()=>{onSave(key);onClose();}} style={{flex:1,padding:"9px 0",background:B.blue,border:"none",borderRadius:6,color:"#fff",fontSize:13,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>Guardar clave</button><button onClick={onClose} style={{padding:"9px 18px",background:"transparent",border:`0.5px solid ${B.border}`,borderRadius:6,color:B.muted,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>Cancelar</button></div>
+    </div>
+  </div>);
+}
+
+function App({session, newUserData, onLogout}){
+  const isAdmin = session?.rol === "admin";
+  const [store,setStore]=useState(()=>loadRoot());
+  const [view,setView]=useState("clientes");
+  const [subview,setSubview]=useState("dashboard");
+  const [toasts,setToasts]=useState([]);
+  const [showSettings,setShowSettings]=useState(false);
+  const [showAdminUsers,setShowAdminUsers]=useState(false);
+  const [saveFlash,setSaveFlash]=useState(false);
+
+  // Auto-create company for new registered user
+  useEffect(()=>{
+    if(newUserData && newUserData.empresa){
+      const existing = Object.values(store.clients||{}).find(c=>c.ownerEmail===newUserData.email);
+      if(!existing){
+        const c = newClient(newUserData.empresa, newUserData.sector, newUserData.etapa, newUserData.nombre, false);
+        c.ownerEmail = newUserData.email;
+        setStore(s=>({...s,clients:{...s.clients,[c.id]:c},activeId:c.id}));
+        setView("app"); setSubview("dashboard");
+      }
+    }
+  },[]);
+
+  // Unlock all modules for admin
+  useEffect(()=>{
+    if(isAdmin){
+      setStore(s=>({...s,clients:Object.fromEntries(Object.entries(s.clients||{}).map(([id,c])=>[id,{...c,modules:(c.modules||[]).map(m=>({...m,unlocked:true}))}]))}));
+    }
+  },[isAdmin]);
+
+  useEffect(()=>{saveRoot(store);setSaveFlash(true);const t=setTimeout(()=>setSaveFlash(false),1500);return()=>clearTimeout(t);},[store]);
+
+  const addToast=(msg,type="success")=>setToasts(t=>[...t,{id:Date.now(),msg,type}]);
+  const removeToast=(id)=>setToasts(t=>t.filter(x=>x.id!==id));
+  const clients=store.clients||{};
+  const activeId=store.activeId;
+  const activeClient=activeId?clients[activeId]:null;
+  const apiKey=store.apiKey||"";
+  const setApiKey=(k)=>setStore(s=>({...s,apiKey:k}));
+
+  const createClient=(nombre,sector,etapa,responsable)=>{
+    const c=newClient(nombre,sector,etapa,responsable,isAdmin);
+    setStore(s=>({...s,clients:{...s.clients,[c.id]:c},activeId:c.id}));
+    setView("app");setSubview("dashboard");
+    addToast(`${nombre} creada`,"success");
+  };
+  const deleteClient=(id)=>{setStore(s=>{const nc={...s.clients};delete nc[id];return{...s,clients:nc,activeId:s.activeId===id?null:s.activeId};});if(activeId===id)setView("clientes");addToast("Empresa eliminada","success");};
+  const selectClient=(id)=>{setStore(s=>({...s,activeId:id}));setView("app");setSubview("dashboard");};
+  const updateClient=(fn)=>{setStore(s=>({...s,clients:{...s.clients,[activeId]:fn(s.clients[activeId])}}));};
+  const currentMod=activeClient?.modules.find(m=>m.id===subview);
+  const globalProgress=activeClient?Math.round(activeClient.modules.reduce((a,m)=>a+(m.progress||0),0)/activeClient.modules.length):0;
+  const navBtn=(active)=>({display:"flex",alignItems:"center",gap:8,padding:"7px 10px",borderRadius:6,cursor:"pointer",fontSize:12,color:active?B.blueLight:B.muted,background:active?"rgba(33,150,243,.1)":"transparent",border:`0.5px solid ${active?"rgba(33,150,243,.25)":"transparent"}`,transition:"all .15s",width:"100%",textAlign:"left",fontFamily:"inherit",marginBottom:2});
+
+  return(<div style={{background:B.bg1,color:B.text,fontFamily:"'Inter',system-ui,sans-serif",minHeight:"100vh",display:"flex",flexDirection:"column",fontSize:14}}>
+    <div style={{background:B.bg2,borderBottom:`0.5px solid ${B.border}`,padding:"0 1.5rem",display:"flex",alignItems:"center",justifyContent:"space-between",height:52,position:"sticky",top:0,zIndex:100}}>
+      <div style={{display:"flex",alignItems:"center",gap:12,cursor:"pointer"}} onClick={()=>setView("clientes")}>
+        <LogoMark size={30}/>
+        <div><span style={{fontFamily:"Inter",fontWeight:700,fontSize:18,letterSpacing:"-0.5px"}}><span style={{color:B.blue}}>alt</span><span style={{color:B.text}}>kimia</span></span><div style={{fontSize:10,color:B.muted,fontFamily:"DM Mono",letterSpacing:"1px",marginTop:1}}>Plataforma MESA</div></div>
+      </div>
+      <div style={{display:"flex",alignItems:"center",gap:8}}>
+        <div style={{fontSize:10,fontFamily:"DM Mono",color:saveFlash?B.green:B.border,transition:"color .3s",display:"flex",alignItems:"center",gap:4}}><div style={{width:5,height:5,borderRadius:"50%",background:saveFlash?B.green:B.border,transition:"background .3s"}}/>Guardado</div>
+        {activeClient&&(<><span style={{fontSize:10,fontFamily:"DM Mono",color:B.muted}}><span style={{color:B.blue,fontWeight:600}}>{globalProgress}%</span></span><Badge>{activeClient.nombre}</Badge><button onClick={()=>setView("clientes")} style={{padding:"4px 10px",background:"transparent",border:`0.5px solid ${B.border}`,borderRadius:6,color:B.muted,fontSize:11,cursor:"pointer",fontFamily:"inherit"}}>Mis empresas</button></>)}
+        {/* User badge */}
+        <div style={{display:"flex",alignItems:"center",gap:6,padding:"4px 10px",background:isAdmin?"rgba(33,150,243,.1)":"rgba(30,45,74,.3)",border:`0.5px solid ${isAdmin?"rgba(33,150,243,.3)":B.border}`,borderRadius:20}}>
+          <div style={{width:16,height:16,borderRadius:"50%",background:isAdmin?B.blue:B.border,display:"flex",alignItems:"center",justifyContent:"center",fontSize:9,fontWeight:700,color:"#fff",flexShrink:0}}>
+            {session?.nombre?.charAt(0)?.toUpperCase()||"U"}
+          </div>
+          <span style={{fontSize:10,color:isAdmin?B.blueLight:B.muted,fontFamily:"DM Mono",maxWidth:120,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{isAdmin?"ADMIN":session?.nombre}</span>
+        </div>
+        {/* Admin users panel button */}
+        {isAdmin&&<button onClick={()=>setShowAdminUsers(true)} title="Gestionar usuarios" style={{width:30,height:30,borderRadius:6,background:"rgba(33,150,243,.1)",border:`0.5px solid rgba(33,150,243,.3)`,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",color:B.blue}}>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" style={{width:14,height:14}}><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>
+        </button>}
+        {/* Settings */}
+        <button onClick={()=>setShowSettings(true)} title="Ajustes" style={{width:30,height:30,borderRadius:6,background:"transparent",border:`0.5px solid ${B.border}`,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",color:B.muted}}>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" style={{width:14,height:14}}><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-2 2 2 2 0 01-2-2v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06-.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 01-2-2 2 2 0 012-2h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 010-2.83 2 2 0 012.83 0l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 012-2 2 2 0 012 2v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 012 2 2 2 0 01-2 2h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
+        </button>
+        {/* Logout */}
+        <button onClick={()=>{if(confirm("¿Cerrar sesión?"))onLogout();}} title="Cerrar sesión" style={{width:30,height:30,borderRadius:6,background:"transparent",border:`0.5px solid rgba(239,83,80,.25)`,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",color:B.red}}>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" style={{width:14,height:14}}><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+        </button>
+      </div>
+    </div>
+    <div style={{display:"flex",flex:1}}>
+      {view==="app"&&activeClient&&(<div style={{width:215,background:B.bg2,borderRight:`0.5px solid ${B.border}`,padding:"1rem 0.75rem",display:"flex",flexDirection:"column",flexShrink:0,overflowY:"auto"}}>
+        <div style={{display:"flex",gap:2,marginBottom:16,padding:"10px 8px",background:B.bg3,borderRadius:8,border:`0.5px solid ${B.border}`}}>
+          {["M","E","S","A","+"].map((l,i)=>(<div key={i} style={{flex:1,textAlign:"center"}}><div style={{fontSize:9,fontFamily:"DM Mono",color:B.blue,fontWeight:600}}>{l}</div><div style={{fontSize:7,color:B.muted,marginTop:1,lineHeight:1.2}}>{["Mapear","Estructurar","Sistematizar","Escalar","Autonomizar"][i]}</div></div>))}
+        </div>
+        <div style={{fontSize:9,fontWeight:600,letterSpacing:"2px",textTransform:"uppercase",color:B.border,marginBottom:6,fontFamily:"DM Mono"}}>Inicio</div>
+        {[{id:"dashboard",label:"Resumen general"},{id:"gaas",label:"Servicios contratados"}].map(n=>(<button key={n.id} style={navBtn(subview===n.id)} onClick={()=>setSubview(n.id)}><div style={{width:5,height:5,borderRadius:"50%",background:subview===n.id?B.blue:B.muted,flexShrink:0}}/>{n.label}</button>))}
+        <div style={{fontSize:9,fontWeight:600,letterSpacing:"2px",textTransform:"uppercase",color:B.border,margin:"16px 0 6px",fontFamily:"DM Mono"}}>Etapas del proceso</div>
+        {activeClient.modules.map(m=>{const prog=m.progress||0;const locked=!m.unlocked;return(<button key={m.id} style={{...navBtn(subview===m.id),opacity:locked?.7:1}} onClick={()=>setSubview(m.id)}><div style={{width:5,height:5,borderRadius:"50%",background:subview===m.id?B.blue:prog>0?"rgba(33,150,243,.5)":B.border,flexShrink:0}}/><span style={{flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",fontSize:11}}>{m.phase}</span>{locked?<span style={{fontSize:9,flexShrink:0}}>🔒</span>:<span style={{fontSize:10,fontFamily:"DM Mono",color:prog>0?B.blue:B.border,flexShrink:0}}>{prog}%</span>}</button>);})}
+        <div style={{marginTop:"auto",paddingTop:16,borderTop:`0.5px solid ${B.border}`}}><div style={{fontSize:10,color:B.border,fontFamily:"DM Mono",lineHeight:1.5}}>"Ordenar el negocio para que pueda crecer."</div></div>
+      </div>)}
+      <div style={{flex:1,overflowY:"auto",padding:"2rem 1.75rem",minWidth:0,background:B.bg1,position:"relative"}}>
+        <div style={{position:"fixed",inset:0,backgroundImage:"radial-gradient(circle,rgba(33,150,243,.05) 1px,transparent 1px)",backgroundSize:"32px 32px",pointerEvents:"none",zIndex:0}}/>
+        <div style={{position:"relative",zIndex:1}}>
+          {view==="clientes"&&<ClientSelector clients={clients} activeId={activeId} onSelect={selectClient} onCreate={createClient} onDelete={deleteClient}/>}
+          {view==="app"&&activeClient&&(<>
+            {subview==="dashboard"&&<Dashboard client={activeClient} updateClient={updateClient} onNav={setSubview} apiKey={apiKey} addToast={addToast}/>}
+            {subview==="gaas"&&<GaaSView client={activeClient} updateClient={updateClient} apiKey={apiKey} addToast={addToast}/>}
+            {currentMod&&<ModuleView mod={currentMod} client={activeClient} updateClient={updateClient} apiKey={apiKey} addToast={addToast} isAdmin={isAdmin}/>}
+          </>)}
+        </div>
+      </div>
+    </div>
+    {showSettings&&<SettingsModal apiKey={apiKey} onSave={(k)=>{setApiKey(k);addToast("Clave guardada","success");}} onClose={()=>setShowSettings(false)}/>}
+    {showAdminUsers&&isAdmin&&<AdminUsersPanel onClose={()=>setShowAdminUsers(false)}/>}
+    <div style={{position:"fixed",bottom:24,right:24,zIndex:9999,display:"flex",flexDirection:"column",gap:8}}>{toasts.map(t=><Toast key={t.id} msg={t.msg} type={t.type} onClose={()=>removeToast(t.id)}/>)}</div>
+  </div>);
+}
+
+
+/* ══════════════════════════════════════════
+   SISTEMA DE AUTENTICACIÓN
+   Admin: avillalobos@altkimia.com
+   Usuarios: registro libre con empresa
+══════════════════════════════════════════ */
+
+function simpleHash(str){
+  let h=0;
+  for(let i=0;i<str.length;i++){h=Math.imul(31,h)+str.charCodeAt(i)|0;}
+  return h.toString(36);
+}
+
+const ADMIN_EMAIL="avillalobos@altkimia.com";
+const ADMIN_HASH=simpleHash("Bandida1970$$");
+const ADMIN_NOMBRE="Antonio Villalobos";
+
+const USERS_KEY="altkimia_users_v1";
+const SESSION_KEY="altkimia_session_v1";
+
+function loadUsers(){try{const r=localStorage.getItem(USERS_KEY);return r?JSON.parse(r):{};}catch{return{};}}
+function saveUsers(u){try{localStorage.setItem(USERS_KEY,JSON.stringify(u));}catch{}}
+function loadSession(){try{const r=sessionStorage.getItem(SESSION_KEY);return r?JSON.parse(r):null;}catch{return null;}}
+function saveSession(s){try{sessionStorage.setItem(SESSION_KEY,JSON.stringify(s));}catch{}}
+function clearSession(){try{sessionStorage.removeItem(SESSION_KEY);}catch{}}
+
+function authLogin(email,password){
+  const e=email.trim().toLowerCase();const h=simpleHash(password.trim());
+  if(e===ADMIN_EMAIL&&h===ADMIN_HASH){
+    const s={email:e,nombre:ADMIN_NOMBRE,rol:"admin",loginAt:Date.now()};
+    saveSession(s);return{ok:true,session:s};
+  }
+  const users=loadUsers();const user=users[e];
+  if(user&&user.passHash===h){
+    const s={email:e,nombre:user.nombre,rol:"user",empresa:user.empresa,loginAt:Date.now()};
+    saveSession(s);return{ok:true,session:s};
+  }
+  return{ok:false,error:"Correo o contraseña incorrectos"};
+}
+
+function authRegister(email,password,nombre,empresa,sector,etapa){
+  const e=email.trim().toLowerCase();
+  if(!e||!password.trim()||!nombre.trim()||!empresa.trim()) return{ok:false,error:"Completa todos los campos obligatorios (*)"}; 
+  if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e)) return{ok:false,error:"Ingresa un correo válido"};
+  if(password.trim().length<6) return{ok:false,error:"La contraseña debe tener al menos 6 caracteres"};
+  if(e===ADMIN_EMAIL) return{ok:false,error:"Correo no disponible"};
+  const users=loadUsers();
+  if(users[e]) return{ok:false,error:"Este correo ya está registrado. Usa 'Ingresar'."};
+  users[e]={email:e,passHash:simpleHash(password.trim()),nombre:nombre.trim(),empresa:empresa.trim(),sector,etapa,rol:"user",createdAt:new Date().toISOString()};
+  saveUsers(users);
+  const s={email:e,nombre:nombre.trim(),rol:"user",empresa:empresa.trim(),loginAt:Date.now()};
+  saveSession(s);
+  return{ok:true,session:s,newUser:{email:e,nombre:nombre.trim(),empresa:empresa.trim(),sector,etapa}};
+}
+
+function AuthScreen({onAuth}){
+  const [mode,setMode]=useState("login");
+  const [error,setError]=useState("");
+  const [shake,setShake]=useState(false);
+  const [loading,setLoading]=useState(false);
+
+  // Use refs for all inputs — avoids focus loss on re-render in Babel standalone
+  const rEmail=useRef(null);
+  const rPass=useRef(null);
+  const rNombre=useRef(null);
+  const rEmpresa=useRef(null);
+  const rSector=useRef(null);
+  const rEtapa=useRef(null);
+
+  const getVals=()=>({
+    email:(rEmail.current?.value||"").trim(),
+    password:(rPass.current?.value||"").trim(),
+    nombre:(rNombre.current?.value||"").trim(),
+    empresa:(rEmpresa.current?.value||"").trim(),
+    sector:(rSector.current?.value||"").trim(),
+    etapa:(rEtapa.current?.value||"").trim()
+  });
+
+  const clearInputs=()=>{
+    [rEmail,rPass,rNombre,rEmpresa,rSector,rEtapa].forEach(r=>{if(r.current)r.current.value="";});
+  };
+
+  const handleSubmit=async()=>{
+    const v=getVals();
+    setLoading(true);setError("");
+    await new Promise(r=>setTimeout(r,200));
+    if(mode==="login"){
+      const res=authLogin(v.email,v.password);
+      if(res.ok){onAuth(res.session);}
+      else{setError(res.error);setShake(true);setTimeout(()=>setShake(false),500);}
+    } else {
+      const res=authRegister(v.email,v.password,v.nombre,v.empresa,v.sector,v.etapa);
+      if(res.ok){onAuth(res.session,res.newUser);}
+      else{setError(res.error);setShake(true);setTimeout(()=>setShake(false),500);}
+    }
+    setLoading(false);
+  };
+
+  const onKey=e=>{if(e.key==="Enter")handleSubmit();};
+
+  const inp=(ref,lbl,ph,type="text")=>(
+    <div style={{marginBottom:12}}>
+      <div style={{fontSize:11,color:B.muted,marginBottom:5,textTransform:"uppercase",letterSpacing:"1px"}}>{lbl}</div>
+      <input ref={ref} type={type} defaultValue="" placeholder={ph} onKeyDown={onKey}
+        autoComplete={type==="password"?"current-password":type==="email"?"email":"off"}
+        style={{background:B.bg3,border:`0.5px solid ${B.border}`,borderRadius:6,color:B.text,fontFamily:"Inter,sans-serif",fontSize:13,padding:"9px 12px",outline:"none",width:"100%",transition:"border-color .15s"}}
+        onFocus={e=>e.target.style.borderColor="rgba(33,150,243,.5)"}
+        onBlur={e=>e.target.style.borderColor=B.border}
+      />
+    </div>
+  );
+
+  return(
+    <div style={{minHeight:"100vh",background:B.bg1,display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"'Inter',system-ui,sans-serif",padding:"24px 16px",position:"relative",overflowY:"auto"}}>
+      <div style={{position:"absolute",inset:0,backgroundImage:"radial-gradient(circle,rgba(33,150,243,.06) 1px,transparent 1px)",backgroundSize:"32px 32px",pointerEvents:"none"}}/>
+      <div style={{width:400,maxWidth:"100%",position:"relative",zIndex:1,animation:"fadeIn .4s ease"}}>
+        <div style={{textAlign:"center",marginBottom:24}}>
+          <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:12,marginBottom:8}}>
+            <svg width="38" height="38" viewBox="0 0 100 100"><rect width="100" height="100" rx="22" fill={B.blue}/><circle cx="46" cy="56" r="24" fill="none" stroke="#fff" strokeWidth="10"/><line x1="70" y1="32" x2="70" y2="80" stroke="#fff" strokeWidth="10" strokeLinecap="round"/><circle cx="46" cy="56" r="6" fill="rgba(255,255,255,.85)"/><circle cx="70" cy="32" r="6" fill="rgba(255,255,255,.6)"/></svg>
+            <span style={{fontFamily:"Inter",fontWeight:700,fontSize:24,letterSpacing:"-0.5px"}}><span style={{color:B.blue}}>alt</span><span style={{color:B.text}}>kimia</span></span>
+          </div>
+          <div style={{fontSize:12,color:B.muted}}>Plataforma MESA · {mode==="login"?"Acceso":"Crear cuenta"}</div>
+        </div>
+
+        <div style={{display:"flex",background:B.bg3,padding:3,borderRadius:8,marginBottom:16,border:`0.5px solid ${B.border}`}}>
+          {[["login","Ingresar"],["register","Crear cuenta"]].map(([m,lbl])=>(
+            <button key={m} onClick={()=>{setMode(m);setError("");clearInputs();}}
+              style={{flex:1,padding:"8px 0",borderRadius:5,fontSize:13,fontWeight:mode===m?600:400,color:mode===m?B.text:B.muted,background:mode===m?B.bg4:"transparent",border:"none",cursor:"pointer",fontFamily:"inherit",transition:"all .15s"}}>{lbl}</button>
+          ))}
+        </div>
+
+        <div style={{background:B.bg2,border:`0.5px solid ${B.border}`,borderRadius:12,padding:"1.5rem",animation:shake?"shake .4s ease":undefined}}>
+          <style>{`@keyframes shake{0%,100%{transform:translateX(0)}20%,60%{transform:translateX(-6px)}40%,80%{transform:translateX(6px)}}`}</style>
+          {mode==="register"&&inp(rNombre,"Nombre completo *","Tu nombre y apellido")}
+          {inp(rEmail,"Correo electrónico *","tu@empresa.com","email")}
+          {inp(rPass,"Contraseña *","Mínimo 6 caracteres","password")}
+          {mode==="register"&&(<>
+            <div style={{height:"0.5px",background:B.border,margin:"14px 0"}}/>
+            <div style={{fontSize:11,color:B.blue,marginBottom:10,textTransform:"uppercase",letterSpacing:"1px"}}>Tu empresa</div>
+            {inp(rEmpresa,"Nombre de la empresa *","Ej: Bodega Los Andes")}
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+              <div>
+                <div style={{fontSize:11,color:B.muted,marginBottom:5,textTransform:"uppercase",letterSpacing:"1px"}}>Rubro</div>
+                <input ref={rSector} type="text" defaultValue="" placeholder="Ej: Agrotech" onKeyDown={onKey}
+                  style={{background:B.bg3,border:`0.5px solid ${B.border}`,borderRadius:6,color:B.text,fontFamily:"Inter,sans-serif",fontSize:13,padding:"9px 12px",outline:"none",width:"100%"}}/>
+              </div>
+              <div>
+                <div style={{fontSize:11,color:B.muted,marginBottom:5,textTransform:"uppercase",letterSpacing:"1px"}}>Etapa</div>
+                <input ref={rEtapa} type="text" defaultValue="" placeholder="Ej: PyME" onKeyDown={onKey}
+                  style={{background:B.bg3,border:`0.5px solid ${B.border}`,borderRadius:6,color:B.text,fontFamily:"Inter,sans-serif",fontSize:13,padding:"9px 12px",outline:"none",width:"100%"}}/>
+              </div>
+            </div>
+          </>)}
+          {error&&<div style={{fontSize:12,color:B.red,margin:"12px 0 0",textAlign:"center",padding:"8px",background:"rgba(239,83,80,.08)",borderRadius:6,border:"0.5px solid rgba(239,83,80,.2)"}}>{error}</div>}
+          <button onClick={handleSubmit} disabled={loading}
+            style={{width:"100%",padding:"11px 0",background:loading?B.blueDark:B.blue,border:"none",borderRadius:8,color:"#fff",fontSize:14,fontWeight:600,cursor:loading?"default":"pointer",fontFamily:"inherit",letterSpacing:".3px",marginTop:16,transition:"background .15s"}}>
+            {loading?"...":(mode==="login"?"Ingresar":"Crear cuenta y comenzar")}
+          </button>
+        </div>
+        <div style={{textAlign:"center",marginTop:14,fontSize:11,color:B.border,fontFamily:"DM Mono"}}>
+          {mode==="login"?"Sin cuenta — usa Crear cuenta arriba":"¿Ya tienes cuenta? — usa Ingresar arriba"}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function AdminUsersPanel({onClose}){
+  const [users,setUsers]=useState(()=>loadUsers());
+  const [search,setSearch]=useState("");
+  const [confirm,setConfirm]=useState(null);
+  const deleteUser=(email)=>{const u={...users};delete u[email];saveUsers(u);setUsers(u);setConfirm(null);};
+  const filtered=Object.values(users).filter(u=>
+    u.email.toLowerCase().includes(search.toLowerCase())||
+    (u.nombre||"").toLowerCase().includes(search.toLowerCase())||
+    (u.empresa||"").toLowerCase().includes(search.toLowerCase())
+  );
+  const card={background:B.bg2,border:`0.5px solid ${B.border}`,borderRadius:8,padding:"14px 16px"};
+  return(
+    <div style={{position:"fixed",inset:0,background:"rgba(8,11,18,.92)",zIndex:3000,display:"flex",alignItems:"flex-start",justifyContent:"center",overflowY:"auto",padding:"24px 16px"}}>
+      <div style={{width:"100%",maxWidth:680,animation:"fadeIn .25s ease"}}>
+        <div style={{background:B.bg2,border:`0.5px solid ${B.border}`,borderRadius:"12px 12px 0 0",padding:"18px 20px",display:"flex",alignItems:"center",justifyContent:"space-between",position:"sticky",top:0,zIndex:10}}>
+          <div>
+            <div style={{fontSize:10,letterSpacing:"2.5px",color:B.blue,textTransform:"uppercase",marginBottom:3}}>Administración</div>
+            <div style={{fontSize:16,fontWeight:600,color:B.text}}>Gestión de usuarios registrados</div>
+          </div>
+          <button onClick={onClose} style={{background:"none",border:"none",color:B.muted,cursor:"pointer",fontSize:22,lineHeight:1}}>×</button>
+        </div>
+        <div style={{background:B.bg2,border:`0.5px solid ${B.border}`,borderTop:"none",borderRadius:"0 0 12px 12px",padding:"20px"}}>
+          {/* Admin fijo */}
+          <div style={{...card,borderTop:`2px solid ${B.blue}`,marginBottom:16}}>
+            <div style={{display:"flex",alignItems:"center",gap:10}}>
+              <div style={{width:36,height:36,borderRadius:"50%",background:B.blue,display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,fontWeight:700,color:"#fff",flexShrink:0}}>A</div>
+              <div style={{flex:1}}>
+                <div style={{fontSize:13,fontWeight:600,color:B.text}}>{ADMIN_NOMBRE}</div>
+                <div style={{fontSize:11,color:B.muted}}>{ADMIN_EMAIL}</div>
+              </div>
+              <span style={{fontSize:10,padding:"2px 10px",borderRadius:10,background:"rgba(33,150,243,.15)",color:B.blue,border:`0.5px solid rgba(33,150,243,.3)`,fontFamily:"DM Mono"}}>ADMIN</span>
+            </div>
+          </div>
+          {/* Stats */}
+          <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10,marginBottom:16}}>
+            {[{l:"Usuarios registrados",v:Object.keys(users).length},{l:"Con empresa",v:Object.values(users).filter(u=>u.empresa).length},{l:"Este mes",v:Object.values(users).filter(u=>new Date(u.createdAt).getMonth()===new Date().getMonth()).length}].map((s,i)=>(
+              <div key={i} style={card}>
+                <div style={{fontSize:10,color:B.muted,textTransform:"uppercase",letterSpacing:"1px",marginBottom:4}}>{s.l}</div>
+                <div style={{fontSize:22,fontWeight:700,fontFamily:"DM Mono",color:B.blue}}>{s.v}</div>
+              </div>
+            ))}
+          </div>
+          {/* Search */}
+          <div style={{marginBottom:14}}>
+            <input type="text" value={search} onChange={e=>setSearch(e.target.value)} placeholder="Buscar por nombre, correo o empresa..."/>
+          </div>
+          {/* List */}
+          {filtered.length===0?(
+            <div style={{textAlign:"center",padding:"2rem",color:B.border,fontSize:13}}>
+              {Object.keys(users).length===0?"Aún no hay usuarios registrados":"Sin resultados"}
+            </div>
+          ):(
+            <div style={{display:"flex",flexDirection:"column",gap:8}}>
+              {filtered.map(u=>(
+                <div key={u.email} style={card}>
+                  <div style={{display:"flex",alignItems:"center",gap:10}}>
+                    <div style={{width:34,height:34,borderRadius:"50%",background:"rgba(33,150,243,.12)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:13,fontWeight:600,color:B.blue,flexShrink:0}}>
+                      {(u.nombre||"U").charAt(0).toUpperCase()}
+                    </div>
+                    <div style={{flex:1,minWidth:0}}>
+                      <div style={{fontSize:13,fontWeight:500,color:B.text}}>{u.nombre}</div>
+                      <div style={{fontSize:11,color:B.muted}}>{u.email}</div>
+                      {u.empresa&&<div style={{fontSize:10,color:B.border,fontFamily:"DM Mono",marginTop:2}}>{u.empresa}{u.sector?" · "+u.sector:""}{u.etapa?" · "+u.etapa:""}</div>}
+                    </div>
+                    <div style={{display:"flex",gap:6,alignItems:"center",flexShrink:0}}>
+                      <div style={{fontSize:10,color:B.border,fontFamily:"DM Mono"}}>{new Date(u.createdAt).toLocaleDateString("es-CL")}</div>
+                      {confirm===u.email?(
+                        <div style={{display:"flex",gap:5}}>
+                          <button onClick={()=>deleteUser(u.email)} style={{padding:"4px 10px",background:B.red,border:"none",borderRadius:5,color:"#fff",fontSize:11,cursor:"pointer",fontFamily:"inherit"}}>Confirmar</button>
+                          <button onClick={()=>setConfirm(null)} style={{padding:"4px 10px",background:"transparent",border:`0.5px solid ${B.border}`,borderRadius:5,color:B.muted,fontSize:11,cursor:"pointer",fontFamily:"inherit"}}>Cancelar</button>
+                        </div>
+                      ):(
+                        <button onClick={()=>setConfirm(u.email)} style={{padding:"4px 8px",background:"transparent",border:`0.5px solid rgba(239,83,80,.3)`,borderRadius:5,color:B.red,fontSize:11,cursor:"pointer",fontFamily:"inherit"}}>Eliminar</button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function Root(){
+  const [session,setSession]=useState(()=>loadSession());
+  const [newUserData,setNewUserData]=useState(null);
+  const handleAuth=(sess,newUser=null)=>{setSession(sess);if(newUser)setNewUserData(newUser);};
+  const handleLogout=()=>{clearSession();setSession(null);setNewUserData(null);};
+  if(!session) return <AuthScreen onAuth={handleAuth}/>;
+  return <App session={session} newUserData={newUserData} onLogout={handleLogout}/>;
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<Root/>);
+</script>
+</body>
+</html>
